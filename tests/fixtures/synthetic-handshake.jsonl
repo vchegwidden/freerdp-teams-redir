@@ -1,0 +1,5 @@
+{"t":0,"dir":"in","ch":"cpc","len":83,"msg":"{\"contentType\":\"scpie\",\"messageName\":\"VMHello\",\"requestId\":1,\"version\":\"synthetic\"}","conn":2}
+{"t":1,"dir":"in","ch":"cpc","len":44,"msg":"{\"contentType\":\"scpie\",\"messageName\":\"Ping\"}","conn":2}
+{"t":2,"dir":"in","ch":"webrtc","len":140,"msg":"{\"rpcObjectType\":\"RDWebRTCRedirector\",\"rpcName\":\"setVersionInfo\",\"version\":{\"shim\":\"synthetic\"},\"session\":{\"remoteApp\":false},\"features\":{}}","conn":1}
+{"t":3,"dir":"in","ch":"webrtc","len":104,"msg":"{\"rpcCallId\":2,\"rpcName\":\"enumerateDevices\",\"rpcObjectType\":\"MediaDevices\",\"rpcObjectId\":1,\"rpcArgs\":[]}","conn":1}
+{"t":4,"dir":"out","ch":"webrtc","len":40,"msg":"ignored: replay feeds only inbound lines","conn":1}

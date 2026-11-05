@@ -1,0 +1,19 @@
+[package]
+name = "teams-redir-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "teams_redir_ffi"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+default = ["libwebrtc"]
+# Without it the add-in links no libwebrtc and answers calls from a fake engine: for protocol work.
+libwebrtc = ["media/libwebrtc"]
+
+[dependencies]
+rpc.workspace = true
+media.workspace = true
+serde_json.workspace = true

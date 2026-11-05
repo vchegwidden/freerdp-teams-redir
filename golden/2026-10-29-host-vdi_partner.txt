@@ -1,0 +1,17 @@
+2026-10-29T15:44:25.804Z Inf	
+
+ Shim Events 
+Thu Oct 29 2026 17:19:50 GMT+0200: {"event":"vdiClientDisconnected","reason":"endpointUnsupported","msg":"endpoint microphone access is disabled","details":{}}
+
+
+2026-10-29T15:19:50.937Z Inf	[VDIPartner] MSRDCRTC: [I] app hwnd=0000000000890496
+2026-10-29T15:19:50.919Z Inf	[VDIPartner] MSRDCRTC: [I] notifyVmEventCallback event={"event":"vdiCallConstraintsChanged","maxParticipantResolutions":{"1":1080,"2":480,"3":480,"4":480,"5":240,"6":240,"7":240,"8":240,"9":240},"maxIncomingStreams":8,"maxOutgoingResolution":720,"maxSimulcastLayers":0}
+2026-10-29T15:19:50.919Z Inf	[VDIPartner] MSRDCRTC: [I] sendConstraintsEvent - 1: 1080 2+: 480 5+: 240
+2026-10-29T15:19:50.914Z Inf	[VDIPartner] MSRDCRTC: [I] notifyVmEventCallback event={"event":"vdiClientDisconnected","reason":"endpointUnsupported","msg":"endpoint microphone access is disabled"}
+2026-10-29T15:19:50.914Z Inf	[VDIPartner] MSRDCRTC: [I] connectionState changed from: 4 to: 0
+2026-10-29T15:19:50.914Z Inf	[VDIPartner] MSRDCRTC: [I] connectionState changed from: 1 to: 4
+2026-10-29T15:19:50.914Z War	[VDIPartner] MSRDCRTC: [W] endpoint microphone access is disabled
+2026-10-29T15:19:50.914Z Err	[VDIPartner] MSRDCRTC: [E] onRpcEventNotification - ERROR: {"rpcEventTarget":{"rpcObjectType":"RDWebRTCRedirector"},"rpcEventName":"sessioninfo","rpcEventArgs":{"display":{"width":1024,"height":768,"dpi":96},"version":{"clientPlatform":"linux","clientAppName":"teams-redir","clientAppVersion":"0.1.0","clientFlavor":"freerdp","webRTC":"M133 (02.10.25) (cd3e295)","webRTCRedirector":"3.1.2609.30001","clientOS":"Linux","clientOSName":"Linux","clientOSVersionDetail":"Linux","oobClient":false},"session":{"endpoint...
+2026-10-29T15:19:50.326Z Inf	[VDIPartner] MSRDCRTC: [I] connectionState changed from: 0 to: 1
+2026-10-29T15:19:50.177Z Inf	[VDIPartner] MSRDCRTC: [I] AVD VDI shim loaded - v1.1.2602.23001
+2026-10-29T15:19:50.177Z Inf	[VDIPartner] MSRDCRTC: [I] initShim called. fullStack:true

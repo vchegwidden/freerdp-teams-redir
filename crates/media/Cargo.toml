@@ -1,0 +1,19 @@
+[package]
+name = "teams-redir-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The real engine: libwebrtc through LiveKit's bindings. It downloads a prebuilt libwebrtc (about
+# 150 MB) on the first build, so the protocol crates do not depend on it.
+libwebrtc = ["dep:libwebrtc", "dep:tokio", "dep:tokio-stream"]
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[dependencies]
+camera.workspace = true
+libwebrtc = { version = "=0.3.55", optional = true }
+tokio-stream = { version = "0.1", optional = true }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "time"], optional = true }

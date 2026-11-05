@@ -1,0 +1,15 @@
+[package]
+name = "teams-redir-rpc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+proto.workspace = true
+media.workspace = true
+camera.workspace = true
+videoipc.workspace = true
+transcript.workspace = true
+serde_json.workspace = true
+# Decoder for the notification sounds (pure Rust, mp3 only).
+symphonia = { version = "0.5", default-features = false, features = ["mp3"] }

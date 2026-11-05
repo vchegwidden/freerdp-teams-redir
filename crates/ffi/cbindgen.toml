@@ -1,0 +1,13 @@
+language = "C"
+include_guard = "TEAMS_REDIR_CORE_H"
+sys_includes = ["stddef.h", "stdint.h"]
+no_includes = true
+documentation = true
+documentation_style = "c99"
+usize_is_size_t = true
+
+[export]
+include = ["tr_host_api"]
+
+[export.rename]
+"c_int" = "int"

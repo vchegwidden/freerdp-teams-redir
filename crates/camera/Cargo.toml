@@ -1,0 +1,10 @@
+[package]
+name = "teams-redir-camera"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+v4l = "0.14"
+# Camera MJPEG frames. Pure Rust.
+zune-jpeg = "0.5"

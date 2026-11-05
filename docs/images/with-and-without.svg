@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 560" width="1000" height="560" role="img" aria-labelledby="t d">
+<title id="t">Without and with media optimization</title><desc id="d">Without media optimization the call's audio and video are relayed through the remote desktop and handled on the Cloud PC. With the add-in they are handled on the Linux machine and go straight to the Teams service; the session only sends control messages.</desc>
+<defs><marker id="a2a58b5" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#2a58b5"/></marker><marker id="s2a58b5" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#2a58b5"/></marker><marker id="a3a3f4a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3a3f4a"/></marker><marker id="s3a3f4a" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#3a3f4a"/></marker><marker id="a6b7280" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6b7280"/></marker><marker id="s6b7280" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#6b7280"/></marker><marker id="ac26f00" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#c26f00"/></marker><marker id="sc26f00" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#c26f00"/></marker></defs>
+<rect width="1000" height="560" rx="12" fill="#ffffff"/>
+<rect x="20" y="20" width="470" height="520" rx="16" fill="#f1f1f1" stroke="#7a7a7a" stroke-width="2"/>
+<text x="38" y="48" font-size="16" font-weight="bold" fill="#7a7a7a" text-anchor="start" font-family="Helvetica, Arial, sans-serif">Without the add-in</text>
+<rect x="60" y="66" width="390" height="70" rx="10" fill="#ffffff" stroke="#5a5a5a" stroke-width="1.6"/>
+<text x="255.0" y="96.0" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Your Linux machine</text>
+<text x="255.0" y="115.0" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Mic, speakers, camera</text>
+<rect x="60" y="188" width="390" height="70" rx="10" fill="#ffffff" stroke="#5a5a5a" stroke-width="1.6"/>
+<text x="255.0" y="218.0" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Remote desktop connection</text>
+<text x="255.0" y="237.0" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Sound and camera are relayed through the RDP connection</text>
+<rect x="60" y="310" width="390" height="84" rx="10" fill="#ffffff" stroke="#5a5a5a" stroke-width="1.6"/>
+<text x="255.0" y="337.5" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Cloud PC (Teams)</text>
+<text x="255.0" y="356.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Teams encodes and decodes the call here,</text>
+<text x="255.0" y="375.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">using the Cloud PC's CPU</text>
+<rect x="60" y="446" width="390" height="64" rx="10" fill="#fff1d9" stroke="#d98a1b" stroke-width="1.6"/>
+<text x="255.0" y="482.5" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Microsoft Teams service</text>
+<line x1="255" y1="136" x2="255" y2="188" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)" marker-start="url(#s3a3f4a)"/>
+<line x1="255" y1="258" x2="255" y2="310" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)" marker-start="url(#s3a3f4a)"/>
+<line x1="255" y1="394" x2="255" y2="446" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)" marker-start="url(#s3a3f4a)"/>
+<rect x="204.5" y="157.5" width="101.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="255" y="170" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">audio + video</text>
+<rect x="225.5" y="279.5" width="59.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="255" y="292" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">relayed</text>
+<rect x="215.0" y="415.5" width="80.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="255" y="428" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">call media</text>
+<text x="290" y="78" font-size="1" font-weight="normal" fill="#1d2430" text-anchor="start" font-family="Helvetica, Arial, sans-serif"></text>
+<rect x="510" y="20" width="470" height="520" rx="16" fill="#e3edff" stroke="#3b6fd4" stroke-width="2"/>
+<text x="528" y="48" font-size="16" font-weight="bold" fill="#3b6fd4" text-anchor="start" font-family="Helvetica, Arial, sans-serif">With the add-in</text>
+<rect x="550" y="66" width="390" height="108" rx="10" fill="#c9dcff" stroke="#2a58b5" stroke-width="1.6"/>
+<text x="745.0" y="105.5" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Your Linux machine + add-in</text>
+<text x="745.0" y="124.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Mic, speakers and camera are handled</text>
+<text x="745.0" y="143.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">right here, by libwebrtc</text>
+<rect x="550" y="310" width="200" height="84" rx="10" fill="#f1f1f1" stroke="#7a7a7a" stroke-width="1.6"/>
+<text x="650.0" y="337.5" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Cloud PC (Teams)</text>
+<text x="650.0" y="356.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Only the app's controls</text>
+<text x="650.0" y="375.5" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">and signalling</text>
+<rect x="550" y="446" width="390" height="64" rx="10" fill="#fff1d9" stroke="#d98a1b" stroke-width="1.6"/>
+<text x="745.0" y="482.5" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Microsoft Teams service</text>
+<path d="M850 174 L850 446" fill="none" stroke="#c26f00" stroke-width="4" marker-end="url(#ac26f00)" marker-start="url(#sc26f00)"/>
+<rect x="857.0" y="287.5" width="115.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="862" y="300" font-size="12.5" font-weight="bold" fill="#8a4b00" text-anchor="start" font-family="Helvetica, Arial, sans-serif">call media goes</text>
+<rect x="857.0" y="305.5" width="52.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="862" y="318" font-size="12.5" font-weight="bold" fill="#8a4b00" text-anchor="start" font-family="Helvetica, Arial, sans-serif">direct</text>
+<path d="M600 174 L600 310" fill="none" stroke="#2a58b5" stroke-width="2.6" stroke-dasharray="7 5" marker-end="url(#a2a58b5)" marker-start="url(#s2a58b5)"/>
+<rect x="607.0" y="223.5" width="87.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="612" y="236" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="start" font-family="Helvetica, Arial, sans-serif">RDP virtual</text>
+<rect x="607.0" y="241.5" width="66.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="612" y="254" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="start" font-family="Helvetica, Arial, sans-serif">channels</text>
+<line x1="650" y1="394" x2="650" y2="446" stroke="#6b7280" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#a6b7280)" marker-start="url(#s6b7280)"/>
+<rect x="657.0" y="413.5" width="80.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="662" y="426" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="start" font-family="Helvetica, Arial, sans-serif">signalling</text>
+</svg>

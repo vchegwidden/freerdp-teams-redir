@@ -1,0 +1,6 @@
+{
+  global:
+    DVCPluginEntry;
+  local:
+    *;
+};

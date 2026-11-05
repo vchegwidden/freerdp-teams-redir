@@ -1,0 +1,21 @@
+{
+  "display": { "dpi": 96 },
+  "version": {
+    "clientOS": "Linux",
+    "clientOSName": "Linux",
+    "clientOSVersionDetail": "Linux",
+    "oobClient": false,
+    "webRTC": "M133 (02.10.25) (cd3e295)",
+    "webRTCRedirector": "3.1.2609.30001"
+  },
+  "features": {
+    "datachannel": "enabled",
+    "screenshare": "enabled",
+    "appshare": "enabled",
+    "e911info": "enabled",
+    "sharesystemaudio": "enabled",
+    "givecontrol": "enabled",
+    "secondaryringer": "enabled",
+    "mirrormyselfvideo": "enabled"
+  }
+}

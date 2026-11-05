@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 760" width="1000" height="760" role="img" aria-labelledby="t d">
+<title id="t">Anatomy of a call</title><desc id="d">Sequence of a call: Teams lists the devices, creates a peer connection, exchanges an offer and answer with the Teams service, the add-in connects directly to the service, and media flows while Teams polls statistics.</desc>
+<defs><marker id="a2a58b5" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#2a58b5"/></marker><marker id="s2a58b5" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#2a58b5"/></marker><marker id="a3a3f4a" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#3a3f4a"/></marker><marker id="s3a3f4a" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#3a3f4a"/></marker><marker id="a6b7280" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#6b7280"/></marker><marker id="s6b7280" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#6b7280"/></marker><marker id="ac26f00" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#c26f00"/></marker><marker id="sc26f00" viewBox="0 0 10 10" refX="1.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M10 0 L0 5 L10 10 z" fill="#c26f00"/></marker></defs>
+<rect width="1000" height="760" rx="12" fill="#ffffff"/>
+<rect x="60" y="20" width="220" height="56" rx="10" fill="#f1f1f1" stroke="#7a7a7a" stroke-width="1.6"/>
+<text x="170.0" y="43.0" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Teams</text>
+<text x="170.0" y="62.0" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">in the AVD session</text>
+<rect x="390" y="20" width="220" height="56" rx="10" fill="#c9dcff" stroke="#2a58b5" stroke-width="1.6"/>
+<text x="500.0" y="43.0" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">teams-redir add-in</text>
+<text x="500.0" y="62.0" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">on your Linux machine</text>
+<rect x="720" y="20" width="220" height="56" rx="10" fill="#fff1d9" stroke="#d98a1b" stroke-width="1.6"/>
+<text x="830.0" y="43.0" font-size="15" font-weight="bold" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Teams service</text>
+<text x="830.0" y="62.0" font-size="13" font-weight="normal" fill="#566070" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">Microsoft cloud</text>
+<line x1="170" y1="76" x2="170" y2="736" stroke="#7a7a7a" stroke-width="2" stroke-dasharray="3 6"/>
+<line x1="500" y1="76" x2="500" y2="736" stroke="#2a58b5" stroke-width="2" stroke-dasharray="3 6"/>
+<line x1="830" y1="76" x2="830" y2="736" stroke="#d98a1b" stroke-width="2" stroke-dasharray="3 6"/>
+<circle cx="28" cy="120" r="13" fill="#3b6fd4"/>
+<text x="28" y="125" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">1</text>
+<rect x="47.0" y="111.0" width="190.3" height="20" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="52" y="125" font-size="14" font-weight="bold" fill="#1d2430" text-anchor="start" font-family="Helvetica, Arial, sans-serif">Teams finds the devices</text>
+<line x1="170" y1="156" x2="500" y2="156" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)"/>
+<rect x="271.8" y="134.0" width="126.5" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="147" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">enumerateDevices</text>
+<line x1="500" y1="196" x2="170" y2="196" stroke="#2a58b5" stroke-width="2.2" marker-end="url(#a2a58b5)"/>
+<rect x="220.8" y="174.0" width="228.4" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="187" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">microphones, speakers, cameras</text>
+<circle cx="28" cy="262" r="13" fill="#3b6fd4"/>
+<text x="28" y="267" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">2</text>
+<rect x="47.0" y="253.0" width="268.7" height="20" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="52" y="267" font-size="14" font-weight="bold" fill="#1d2430" text-anchor="start" font-family="Helvetica, Arial, sans-serif">Teams builds a call on the add-in</text>
+<line x1="170" y1="298" x2="500" y2="298" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)"/>
+<rect x="151.6" y="276.0" width="366.7" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="289" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">createPeerConnection, addTransceiver, createOffer</text>
+<line x1="500" y1="338" x2="170" y2="338" stroke="#2a58b5" stroke-width="2.2" marker-end="url(#a2a58b5)"/>
+<rect x="235.4" y="316.0" width="199.3" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="329" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">offer (SDP) from libwebrtc</text>
+<circle cx="28" cy="404" r="13" fill="#3b6fd4"/>
+<text x="28" y="409" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">3</text>
+<rect x="47.0" y="395.0" width="268.7" height="20" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="52" y="409" font-size="14" font-weight="bold" fill="#1d2430" text-anchor="start" font-family="Helvetica, Arial, sans-serif">Teams negotiates with the service</text>
+<line x1="170" y1="440" x2="830" y2="440" stroke="#6b7280" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#a6b7280)"/>
+<rect x="331.2" y="418.0" width="337.6" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="500.0" y="431" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">offer, sent by Teams (not through the add-in)</text>
+<line x1="830" y1="480" x2="170" y2="480" stroke="#6b7280" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#a6b7280)"/>
+<rect x="473.2" y="458.0" width="53.7" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="500.0" y="471" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">answer</text>
+<line x1="170" y1="520" x2="500" y2="520" stroke="#3a3f4a" stroke-width="2.2" marker-end="url(#a3a3f4a)"/>
+<rect x="228.1" y="498.0" width="213.8" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="511" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">setRemoteDescription(answer)</text>
+<circle cx="28" cy="566" r="13" fill="#3b6fd4"/>
+<text x="28" y="571" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">4</text>
+<rect x="47.0" y="557.0" width="260.9" height="20" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="52" y="571" font-size="14" font-weight="bold" fill="#1d2430" text-anchor="start" font-family="Helvetica, Arial, sans-serif">The add-in connects, media flows</text>
+<line x1="500" y1="602" x2="830" y2="602" stroke="#c26f00" stroke-width="2.2" marker-end="url(#ac26f00)"/>
+<rect x="481.6" y="580.0" width="366.7" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="665.0" y="593" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">ICE + DTLS, using the service's relay credentials</text>
+<line x1="500" y1="642" x2="830" y2="642" stroke="#c26f00" stroke-width="2.2" marker-end="url(#ac26f00)"/>
+<rect x="518.0" y="620.0" width="293.9" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="665.0" y="633" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">audio and video (SRTP), both directions</text>
+<line x1="830" y1="642" x2="500" y2="642" stroke="#c26f00" stroke-width="2.2" marker-end="url(#ac26f00)"/>
+<line x1="500" y1="682" x2="170" y2="682" stroke="#2a58b5" stroke-width="2.2" marker-end="url(#a2a58b5)"/>
+<rect x="133.4" y="660.0" width="403.1" height="19" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="335.0" y="673" font-size="13" font-weight="normal" fill="#1d2430" text-anchor="middle" font-family="Helvetica, Arial, sans-serif">events: track, connectionstatechange, getStats results</text>
+<rect x="47.0" y="703.5" width="535.0" height="18.5" rx="4" fill="#ffffff" fill-opacity="0.92"/>
+<text x="52" y="716" font-size="12.5" font-weight="normal" fill="#566070" text-anchor="start" font-family="Helvetica, Arial, sans-serif">Teams keeps sending commands (mute, camera on, getStats) until it hangs up.</text>
+</svg>

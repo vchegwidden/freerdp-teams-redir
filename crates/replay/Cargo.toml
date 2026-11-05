@@ -1,0 +1,18 @@
+[package]
+name = "teams-redir-replay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "replay"
+path = "src/main.rs"
+
+[features]
+# `TEAMS_REDIR_REPLAY_ENGINE=libwebrtc` then runs the calls on the real engine and sound devices.
+libwebrtc = ["media/libwebrtc"]
+
+[dependencies]
+rpc.workspace = true
+media.workspace = true
+transcript.workspace = true

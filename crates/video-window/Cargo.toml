@@ -1,0 +1,13 @@
+[package]
+name = "teams-redir-video-window"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "teams-redir-video"
+path = "src/main.rs"
+
+[dependencies]
+videoipc.workspace = true
+sdl3-sys = "0.7"

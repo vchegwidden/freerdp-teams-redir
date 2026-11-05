@@ -1,0 +1,7 @@
+{
+  "version": {
+    "webRTC": "M133 (02.10.25) (cd3e295)",
+    "webRTCRedirector": "3.1.2609.30001"
+  },
+  "features": { "datachannel": "enabled" }
+}
