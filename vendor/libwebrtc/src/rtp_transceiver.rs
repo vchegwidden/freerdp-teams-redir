@@ -44,6 +44,11 @@ pub struct RtpTransceiver {
 }
 
 impl RtpTransceiver {
+    /// teams-redir patch: identifies the libwebrtc transceiver behind this wrapper.
+    pub fn id(&self) -> usize {
+        self.handle.id()
+    }
+
     pub fn mid(&self) -> Option<String> {
         self.handle.mid()
     }

@@ -64,6 +64,11 @@ pub struct RtpTransceiver {
 }
 
 impl RtpTransceiver {
+    // teams-redir patch: see `webrtc-sys/include/livekit/rtp_transceiver.h`.
+    pub fn id(&self) -> usize {
+        self.sys_handle.id()
+    }
+
     pub fn mid(&self) -> Option<String> {
         // The C++ shim returns "" when libwebrtc has no mid yet (instead of
         // calling std::optional::value() which would abort under -fno-exceptions).

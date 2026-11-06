@@ -56,6 +56,10 @@ rust::String RtpTransceiver::mid() const {
   return transceiver_->mid().value_or("");
 }
 
+size_t RtpTransceiver::id() const {
+  return reinterpret_cast<size_t>(transceiver_.get());
+}
+
 std::shared_ptr<RtpSender> RtpTransceiver::sender() const {
   return std::make_shared<RtpSender>(rtc_runtime_, transceiver_->sender(),
                                      peer_connection_);

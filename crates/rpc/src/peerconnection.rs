@@ -65,13 +65,24 @@ pub(crate) struct TransceiverRecord {
     /// event that allocates first clears it for its own transceiver only (§3c); the others it
     /// found stay pending, and a receive-only video section never gets an event at all.
     unreported: bool,
+    /// Whether the engine still lists this transceiver. libwebrtc drops one whose section both
+    /// sides rejected, and a later offer that reuses the section gets a new transceiver; the
+    /// record of the dropped one stays, so that ids Teams holds keep meaning that transceiver.
+    live: bool,
+    /// The mid it had while the engine listed it. The engine forgets it with the transceiver.
+    last_mid: Option<String>,
+    /// The engine transceiver was made by [`PeerConnections::handle_for`] to take the place of
+    /// one the engine dropped, and no section is its own yet.
+    resurrected: bool,
     pub(crate) handle: Arc<dyn Transceiver>,
 }
 
 pub(crate) struct Pc {
     pub(crate) conn: ConnId,
     pub(crate) engine: Arc<dyn PeerConnection>,
-    /// Mirrors `engine.transceivers()` by index.
+    /// One record per transceiver the engine ever listed, in the order they first appeared. The
+    /// engine's own list is not stable (see [`TransceiverRecord::live`]), so records are matched
+    /// to it by [`Transceiver::id`].
     pub(crate) transceivers: Vec<TransceiverRecord>,
 }
 
@@ -122,6 +133,9 @@ pub struct PeerConnections {
     /// Remote tracks and the streams they belong to, by the ids this side allocated.
     pub(crate) remote_tracks: HashMap<u64, Arc<dyn Track>>,
     pub(crate) remote_streams: HashMap<u64, Vec<u64>>,
+    /// The remote streams each mid of a peer connection has had. A section that is rejected and
+    /// offered again brings a new stream, and Teams may still attach its elements to the old one.
+    mid_streams: HashMap<(u64, String), Vec<u64>>,
     pub(crate) surface: Arc<dyn VideoSurface>,
     advertise_video: bool,
     pub(crate) channels: HashMap<u64, DataChannelRecord>,
@@ -149,6 +163,7 @@ impl PeerConnections {
             elements: HashMap::new(),
             remote_tracks: HashMap::new(),
             remote_streams: HashMap::new(),
+            mid_streams: HashMap::new(),
             surface,
             advertise_video,
             channels: HashMap::new(),
@@ -376,36 +391,141 @@ impl PeerConnections {
         vec![Out { conn, json }]
     }
 
-    /// Appends a record for every engine transceiver that has none. The ids are allocated here
-    /// unless the host just created the last one and passes its own. Returns how many records
-    /// there were before.
+    /// Appends a record for every engine transceiver that has none, and marks which records the
+    /// engine still lists. The ids are allocated here unless the host just created the last one
+    /// and passes its own. Returns how many records there were before.
+    ///
+    /// A transceiver that appears with the mid of a record the engine dropped is that section
+    /// coming back (the service rejected it in an answer and offered it again): it takes over the
+    /// record, so the ids Teams holds go on meaning "the transceiver of this mid". Teams never
+    /// learns that the engine swapped it.
     pub(crate) fn sync_transceivers(&mut self, id: u64, host: Option<(u64, u64, u64)>) -> usize {
         let Some(engine) = self.pcs.get(&id).map(|pc| pc.engine.clone()) else {
             return 0;
         };
         let all = engine.transceivers();
         let have = self.pcs.get(&id).map_or(0, |pc| pc.transceivers.len());
-        for (index, handle) in all.iter().enumerate().skip(have) {
-            let host_ids = host.filter(|_| index + 1 == all.len());
+        let keys: Vec<u64> = all.iter().map(|h| h.id()).collect();
+        if let Some(pc) = self.pcs.get_mut(&id) {
+            for rec in &mut pc.transceivers {
+                let key = rec.handle.id();
+                rec.live = keys.contains(&key);
+                if rec.live
+                    && let Some(mid) = rec.handle.info().mid
+                {
+                    rec.last_mid = Some(mid);
+                }
+            }
+        }
+        for (position, handle) in all.iter().enumerate() {
+            let key = handle.id();
+            let info = handle.info();
+            let Some(pc) = self.pcs.get_mut(&id) else {
+                break;
+            };
+            // One this side stopped (see below) stays in the list until the next negotiation.
+            if info.direction == Direction::Stopped
+                || pc.transceivers.iter().any(|r| r.handle.id() == key)
+            {
+                continue;
+            }
+            let back = info.mid.as_ref().and_then(|mid| {
+                pc.transceivers.iter().position(|r| {
+                    !r.live && r.last_mid.as_ref() == Some(mid) && r.handle.info().kind == info.kind
+                })
+            });
+            if let Some(index) = back {
+                let rec = &mut pc.transceivers[index];
+                rec.handle = handle.clone();
+                rec.live = true;
+                rec.last_mid = info.mid.clone();
+                continue;
+            }
+            // The service offered a section for the first time while Teams already sends on a
+            // transceiver it was given in place of a dropped one. libwebrtc made a transceiver
+            // for the section instead of using that one, so the section gets what Teams set up
+            // (its camera and direction), and the spare is stopped so no second section is offered.
+            let takeover = info.mid.as_ref().and_then(|_| {
+                pc.transceivers.iter().position(|r| {
+                    r.resurrected
+                        && r.live
+                        && r.handle.info().mid.is_none()
+                        && r.handle.info().kind == info.kind
+                })
+            });
+            if let Some(index) = takeover {
+                let rec = &mut pc.transceivers[index];
+                let old = rec.handle.clone();
+                let wanted = old.info().direction;
+                let track = old.sender_track_id().and_then(|tid| {
+                    self.local_tracks
+                        .values()
+                        .find(|l| l.track.id() == tid)
+                        .map(|l| l.track.clone())
+                });
+                if track.is_some() {
+                    let _ = handle.set_sender_track(track);
+                }
+                if matches!(wanted, Direction::SendRecv | Direction::SendOnly) {
+                    let _ = handle.set_direction(wanted);
+                }
+                let _ = old.stop();
+                rec.handle = handle.clone();
+                rec.live = true;
+                rec.resurrected = false;
+                rec.last_mid = info.mid.clone();
+                continue;
+            }
+            let host_ids = host.filter(|_| position + 1 == all.len());
             let (tid, rid, sid) = host_ids.unwrap_or_else(|| {
                 let base = self.alloc(3);
                 (base, base + 1, base + 2)
             });
-            if let Some(pc) = self.pcs.get_mut(&id) {
-                pc.transceivers.push(TransceiverRecord {
-                    id: tid,
-                    receiver: rid,
-                    sender: sid,
-                    // Ids the host did not choose have to be reported to it once.
-                    unreported: host_ids.is_none(),
-                    handle: handle.clone(),
-                });
-            }
+            let Some(pc) = self.pcs.get_mut(&id) else {
+                break;
+            };
+            let index = pc.transceivers.len();
+            pc.transceivers.push(TransceiverRecord {
+                id: tid,
+                receiver: rid,
+                sender: sid,
+                // Ids the host did not choose have to be reported to it once.
+                unreported: host_ids.is_none(),
+                live: true,
+                last_mid: info.mid,
+                resurrected: false,
+                handle: handle.clone(),
+            });
             let at = TransceiverRef { pc: id, index };
             self.transceiver_ids.insert(tid, at);
             self.sender_ids.insert(sid, at);
         }
         have
+    }
+
+    /// The engine transceiver behind a record, for a call that changes it. When the engine has
+    /// dropped it and the call is about to send on it, a new transceiver takes its place first:
+    /// Teams turned its camera on before the service offered the rejected section again, and
+    /// the call has to go on with the ids Teams has. Without that the call fails with "Failed to
+    /// set track".
+    pub(crate) fn handle_for(
+        &mut self,
+        at: TransceiverRef,
+        sending: bool,
+    ) -> Option<Arc<dyn Transceiver>> {
+        let pc = self.pcs.get_mut(&at.pc)?;
+        let engine = pc.engine.clone();
+        let rec = pc.transceivers.get_mut(at.index)?;
+        if !rec.live && sending {
+            let kind = rec.handle.info().kind?;
+            if let Ok(fresh) = engine.add_transceiver(kind, Direction::Inactive) {
+                rec.handle = fresh;
+                rec.live = true;
+                rec.last_mid = None;
+                rec.resurrected = true;
+            }
+        }
+        Some(rec.handle.clone())
     }
 
     /// `result.transceivers` of a set-description reply (§3c): one entry per transceiver with a
@@ -416,7 +536,7 @@ impl PeerConnections {
             return Vec::new();
         };
         let mut out = Vec::new();
-        for rec in &mut pc.transceivers {
+        for rec in pc.transceivers.iter_mut().filter(|r| r.live) {
             let info = rec.handle.info();
             let (Some(mid), true) = (info.mid, info.direction != Direction::Stopped) else {
                 continue;
@@ -804,7 +924,7 @@ impl PeerConnections {
             .get(&id)?
             .transceivers
             .iter()
-            .position(|r| r.handle.info().mid.as_deref() == Some(mid.as_str()))?;
+            .position(|r| r.live && r.handle.info().mid.as_deref() == Some(mid.as_str()))?;
         let reuse = index < known;
         // This event is what tells the host about its transceiver; any other one that was found
         // along the way is still to be reported by a reply.
@@ -821,6 +941,24 @@ impl PeerConnections {
                 if !tracks.contains(&track_n) {
                     tracks.push(track_n);
                 }
+            }
+        }
+        // A section that came back brings a new stream and track. Teams, which keeps the stream
+        // it first attached to the mid (2026-11-06: it did so after the other side restarted
+        // his camera), would show the ended track, so the new track goes into the old streams too.
+        let mut aliased = Vec::new();
+        if let (Some(sn), Some(handle)) = (stream_n, &t.track) {
+            let kind = handle.0.kind();
+            let seen = self.mid_streams.entry((id, mid.clone())).or_default();
+            for old in seen.iter().copied().filter(|old| *old != sn) {
+                if let Some(tracks) = self.remote_streams.get_mut(&old) {
+                    tracks.retain(|n| self.remote_tracks.get(n).is_none_or(|x| x.kind() != kind));
+                    tracks.push(track_n);
+                    aliased.push(old);
+                }
+            }
+            if !seen.contains(&sn) {
+                seen.push(sn);
             }
         }
         let rec = &pc.transceivers[index];
@@ -847,7 +985,7 @@ impl PeerConnections {
             args.insert("stream".into(), json!({ "rpcObjectId": n, "id": sid }));
         }
         args.insert("reuseReceiver".into(), json!(reuse));
-        if let Some(n) = stream_n {
+        for n in stream_n.into_iter().chain(aliased) {
             self.refresh_elements(n);
         }
         Some(Value::Object(args))
@@ -1655,6 +1793,153 @@ mod tests {
         rig.pump();
     }
 
+    /// The setup of the 1:1 calls of 2026-11-06: three transceivers made by Teams, an answer that
+    /// rejects the first video section.
+    fn rejected_video_section(rig: &mut Rig) {
+        let args = |kind: &str, t: u64| {
+            format!(
+                r#"[{{"trackRpcObjectId":0,"kind":"{kind}","direction":"inactive","transceiverRpcObjectId":{t},"senderRpcObjectId":{},"receiverRpcObjectId":{}}}]"#,
+                t + 1,
+                t + 2
+            )
+        };
+        rig_call(rig, &rpc(3, 60, "addTransceiver", &args("audio", 4)));
+        rig_call(rig, &rpc(3, 61, "addTransceiver", &args("video", 7)));
+        rig_call(rig, &rpc(3, 62, "addTransceiver", &args("video", 10)));
+        rig_call(
+            rig,
+            &rpc(
+                3,
+                63,
+                "setLocalDescription",
+                r#"[{"type":"offer","sdp":"v=0\r\n"}]"#,
+            ),
+        );
+        let answer = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\nm=video 0 X 36\r\na=inactive\r\nm=video 9 X 96\r\na=mid:2\r\na=inactive\r\n";
+        let (r, _) = rig.call(&rpc(
+            3,
+            64,
+            "setRemoteDescription",
+            &json!([{ "type": "answer", "sdp": answer }]).to_string(),
+        ));
+        let reply = r.iter().find(|m| m["rpcCallId"] == 64).unwrap();
+        let ids: Vec<u64> = reply["result"]["transceivers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["rpcObjectId"].as_u64().unwrap())
+            .collect();
+        assert_eq!(ids, vec![4, 10], "the stopped transceiver is not listed");
+    }
+
+    /// A call on the transceiver Teams made with id 7; returns its reply.
+    fn transceiver_call(rig: &mut Rig, call: u64, name: &str, args: &str) -> Value {
+        let req = envelope::parse_request(&format!(
+            r#"{{"rpcCallId":{call},"rpcObjectType":"RTCRtpTransceiver","rpcObjectId":7,"rpcName":"{name}","rpcArgs":{args}}}"#
+        ))
+        .unwrap();
+        let devices = crate::devices::fake::FakeDevices(Ok(Vec::new()));
+        let o = rig.pcs.handle_object(1, &devices, &req).expect("handled");
+        serde_json::from_str(&o.replies[0]).unwrap()
+    }
+
+    const SERVICE_OFFERS_VIDEO_AGAIN: &str = "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\nm=video 9 X 96\r\na=mid:1\r\nm=video 0 X 36\r\na=inactive\r\n";
+
+    /// 2026-11-06, a 1:1 call with video turned on: the service answered our `video_1` section
+    /// with port 0 (it had nothing to send yet), so libwebrtc stopped that transceiver and dropped
+    /// it from its list, and the service later offered `video_1` again. The engine made a new
+    /// transceiver for it. Teams goes on using the ids of its own transceiver for that mid (the
+    /// camera is attached with `replaceTrack` on its sender), so the new one has to take them over.
+    #[test]
+    fn a_section_the_service_offers_again_takes_over_the_ids_of_the_rejected_one() {
+        let mut rig = created();
+        rejected_video_section(&mut rig);
+        let (r, _) = rig.call(&rpc(
+            3,
+            65,
+            "setRemoteDescription",
+            &json!([{ "type": "offer", "sdp": SERVICE_OFFERS_VIDEO_AGAIN }]).to_string(),
+        ));
+        let track = r
+            .iter()
+            .find(|m| {
+                m["rpcEventName"] == "track" && m["rpcEventArgs"]["transceiver"]["mid"] == "1"
+            })
+            .expect("the section gets a track event");
+        let args = &track["rpcEventArgs"];
+        assert_eq!(args["transceiver"]["rpcObjectId"], json!(7));
+        assert_eq!(args["sender"]["rpcObjectId"], json!(8));
+        assert_eq!(args["receiver"]["rpcObjectId"], json!(9));
+        assert_eq!(args["reuseReceiver"], json!(true));
+        // The record now holds the transceiver the engine lists.
+        let at = rig.pcs.sender_ids.get(&8).copied().unwrap();
+        let pc = rig.pcs.pcs.get(&3).unwrap();
+        assert!(pc.transceivers[at.index].live);
+        let listed: Vec<u64> = pc.engine.transceivers().iter().map(|t| t.id()).collect();
+        assert!(listed.contains(&pc.transceivers[at.index].handle.id()));
+        // Teams can set the direction of the transceiver it has.
+        let r = transceiver_call(
+            &mut rig,
+            66,
+            "setDirection",
+            r#"[{"direction":"sendrecv"}]"#,
+        );
+        assert_eq!(r["hr"], json!(0), "{r:?}");
+    }
+
+    /// The same call, when Teams turns the camera on before the service offers the section again:
+    /// it sets the rejected transceiver to `sendrecv`, and that has to give it a working one. The
+    /// section the service offers next is then the one of that transceiver.
+    #[test]
+    fn sending_on_a_rejected_transceiver_gives_it_a_new_engine_transceiver() {
+        let mut rig = created();
+        rejected_video_section(&mut rig);
+        let r = transceiver_call(
+            &mut rig,
+            66,
+            "setDirection",
+            r#"[{"direction":"sendrecv"}]"#,
+        );
+        assert_eq!(r["hr"], json!(0), "{r:?}");
+        let at = rig.pcs.transceiver_ids.get(&7).copied().unwrap();
+        assert!(rig.pcs.pcs.get(&3).unwrap().transceivers[at.index].live);
+        // The service offers the section: the new transceiver takes it, and Teams hears about it
+        // under the ids it knows.
+        let (r, _) = rig.call(&rpc(
+            3,
+            67,
+            "setRemoteDescription",
+            &json!([{ "type": "offer", "sdp": SERVICE_OFFERS_VIDEO_AGAIN }]).to_string(),
+        ));
+        let track = r
+            .iter()
+            .find(|m| {
+                m["rpcEventName"] == "track" && m["rpcEventArgs"]["transceiver"]["mid"] == "1"
+            })
+            .expect("the section gets a track event");
+        assert_eq!(
+            track["rpcEventArgs"]["transceiver"]["rpcObjectId"],
+            json!(7)
+        );
+        let pc = rig.pcs.pcs.get(&3).unwrap();
+        assert_eq!(
+            pc.transceivers.len(),
+            3,
+            "no record for the section's transceiver"
+        );
+        // The section has the direction Teams chose, and the spare no longer takes a section.
+        let mine = &pc.transceivers[at.index].handle;
+        assert_eq!(mine.info().mid.as_deref(), Some("1"));
+        assert_eq!(mine.info().direction, media::Direction::SendRecv);
+        let stopped = pc
+            .engine
+            .transceivers()
+            .iter()
+            .filter(|t| t.info().direction == media::Direction::Stopped)
+            .count();
+        assert_eq!(stopped, 1);
+    }
+
     #[test]
     fn add_transceiver_errors() {
         let mut rig = created();
@@ -1790,6 +2075,96 @@ mod tests {
 
     fn remote_track(rig: &Rig, id: u64) -> Arc<dyn media::Track> {
         rig.pcs.remote_tracks[&id].clone()
+    }
+
+    /// 2026-11-06, the other side turned his camera off and on again in a 1:1 call. His video
+    /// section was rejected and offered again with a new stream, and Teams attached the new
+    /// element to the stream it knew, so the picture stayed on the ended track.
+    #[test]
+    fn a_section_that_comes_back_shows_its_new_track_in_elements_of_the_old_stream() {
+        let (mut rig, surface) = video_rig();
+        let offer = |stream: &str| {
+            json!([{ "type": "offer", "sdp": format!(
+                "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\nm=video 9 X 96\r\na=mid:1\r\na=msid:{stream} t\r\n") }])
+            .to_string()
+        };
+        let (r, _) = rig.call(&rpc(3, 2, "setRemoteDescription", &offer("first")));
+        let video_event = r
+            .iter()
+            .find(|m| {
+                m["rpcEventName"] == "track" && m["rpcEventArgs"]["receiver"]["kind"] == "video"
+            })
+            .unwrap();
+        let stream = video_event["rpcEventArgs"]["stream"]["rpcObjectId"]
+            .as_u64()
+            .unwrap();
+        let old = video_event["rpcEventArgs"]["track"]["rpcObjectId"]
+            .as_u64()
+            .unwrap();
+        element_call(
+            &mut rig,
+            "MediaElement",
+            10,
+            "createMediaElement",
+            r#"["video",""]"#,
+        );
+        let attach =
+            format!(r#"["srcObject",{{"rpcObjectType":"MediaStream","rpcObjectId":{stream}}}]"#);
+        element_call(&mut rig, "MediaElement", 10, "setAttribute", &attach);
+        let old_track = remote_track(&rig, old);
+        assert!(
+            old_track
+                .as_any()
+                .downcast_ref::<media::fake::FakeTrack>()
+                .unwrap()
+                .has_sink()
+        );
+
+        // The answer rejects the video section; the service offers it again with a new stream.
+        let answer = json!([{ "type": "answer", "sdp": "v=0\r\nm=audio 9 X 111\r\na=mid:0\r\nm=video 0 X 36\r\na=inactive\r\n" }]).to_string();
+        rig.call(&rpc(3, 3, "setRemoteDescription", &answer));
+        let (r, _) = rig.call(&rpc(3, 4, "setRemoteDescription", &offer("second")));
+        let again = r
+            .iter()
+            .find(|m| {
+                m["rpcEventName"] == "track" && m["rpcEventArgs"]["receiver"]["kind"] == "video"
+            })
+            .unwrap();
+        let new = again["rpcEventArgs"]["track"]["rpcObjectId"]
+            .as_u64()
+            .unwrap();
+        assert_ne!(new, old);
+        assert_ne!(
+            again["rpcEventArgs"]["stream"]["rpcObjectId"]
+                .as_u64()
+                .unwrap(),
+            stream
+        );
+
+        // The element Teams attached to the first stream now shows the new track.
+        let new_track = remote_track(&rig, new);
+        let fake: &media::fake::FakeTrack = new_track.as_any().downcast_ref().unwrap();
+        assert!(fake.has_sink());
+        assert!(
+            !old_track
+                .as_any()
+                .downcast_ref::<media::fake::FakeTrack>()
+                .unwrap()
+                .has_sink()
+        );
+        fake.deliver(&picture());
+        assert_eq!(surface.frames.lock().unwrap().last().map(|f| f.0), Some(10));
+        // And an element attached to that stream afterwards gets the new track, not the old one.
+        element_call(
+            &mut rig,
+            "MediaElement",
+            11,
+            "createMediaElement",
+            r#"["video",""]"#,
+        );
+        element_call(&mut rig, "MediaElement", 11, "setAttribute", &attach);
+        fake.deliver(&picture());
+        assert!(surface.frames.lock().unwrap().iter().any(|f| f.0 == 11));
     }
 
     #[test]

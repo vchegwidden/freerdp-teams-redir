@@ -774,6 +774,10 @@ struct LkTransceiver {
 }
 
 impl Transceiver for LkTransceiver {
+    fn id(&self) -> u64 {
+        self.t.id() as u64
+    }
+
     fn info(&self) -> TransceiverInfo {
         transceiver_info(&self.t, self.kind)
     }
@@ -815,6 +819,10 @@ impl Transceiver for LkTransceiver {
             })
             .collect();
         self.t.set_codec_preferences(codecs).map_err(error)
+    }
+
+    fn stop(&self) -> Result<(), EngineError> {
+        self.t.stop().map_err(error)
     }
 
     fn remove_track(&self) -> Result<(), EngineError> {

@@ -347,6 +347,11 @@ pub trait Track: Send + Sync {
 
 /// One m-line's worth of sender and receiver. Handles stay valid for the life of the connection.
 pub trait Transceiver: Send + Sync {
+    /// Tells transceivers apart: two handles of one transceiver have the same id, and no two
+    /// transceivers that exist at the same time share one. The engine's list of transceivers
+    /// shrinks when a rejected section is dropped and grows when one is recycled, so a position
+    /// in it says nothing.
+    fn id(&self) -> u64;
     fn info(&self) -> TransceiverInfo;
     fn set_direction(&self, direction: Direction) -> Result<(), EngineError>;
     /// `replaceTrack` on the sender; `None` clears it. The id of the track now sent, if any.
@@ -357,6 +362,8 @@ pub trait Transceiver: Send + Sync {
     fn set_codec_preferences(&self, codecs: Vec<CodecCapability>) -> Result<(), EngineError>;
     /// `removeTrack`: stops sending and lets the next negotiation drop the sender's stream.
     fn remove_track(&self) -> Result<(), EngineError>;
+    /// Stops the transceiver for good: the next negotiation rejects its section.
+    fn stop(&self) -> Result<(), EngineError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

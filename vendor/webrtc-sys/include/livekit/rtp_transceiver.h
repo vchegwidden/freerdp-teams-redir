@@ -50,6 +50,10 @@ class RtpTransceiver {
 
   rust::String mid() const;
 
+  // teams-redir patch: the address of the libwebrtc transceiver, which tells two wrappers of the
+  // same transceiver apart from two transceivers. Valid while a wrapper of it is alive.
+  size_t id() const;
+
   std::shared_ptr<RtpSender> sender() const;
 
   std::shared_ptr<RtpReceiver> receiver() const;

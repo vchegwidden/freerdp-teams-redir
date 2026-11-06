@@ -178,6 +178,7 @@ impl Track for FakeTrack {
 }
 
 pub struct FakeTransceiver {
+    id: u64,
     /// The mime types last given to `set_codec_preferences`.
     pub codecs: Mutex<Vec<String>>,
     info: Mutex<TransceiverInfo>,
@@ -186,7 +187,9 @@ pub struct FakeTransceiver {
 
 impl FakeTransceiver {
     fn new(mid: Option<String>, kind: Kind, direction: Direction) -> Arc<FakeTransceiver> {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Arc::new(FakeTransceiver {
+            id: NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             codecs: Mutex::new(Vec::new()),
             info: Mutex::new(TransceiverInfo {
                 mid,
@@ -199,6 +202,10 @@ impl FakeTransceiver {
 }
 
 impl Transceiver for FakeTransceiver {
+    fn id(&self) -> u64 {
+        self.id
+    }
+
     fn info(&self) -> TransceiverInfo {
         self.info.lock().unwrap().clone()
     }
@@ -225,6 +232,11 @@ impl Transceiver for FakeTransceiver {
             ));
         }
         *self.codecs.lock().unwrap() = codecs.iter().map(|c| c.mime_type.clone()).collect();
+        Ok(())
+    }
+
+    fn stop(&self) -> Result<(), EngineError> {
+        self.info.lock().unwrap().direction = Direction::Stopped;
         Ok(())
     }
 
@@ -352,41 +364,87 @@ impl PeerConnection for FakePc {
         let mut tracks = Vec::new();
         {
             let mut st = self.state.lock().unwrap();
-            // Sections as (kind, mid, whether the remote sends), in the order of the `m=` lines.
-            let mut sections: Vec<(Kind, Option<String>, bool)> = Vec::new();
+            // Sections as (kind, mid, whether the remote sends, rejected), in the order of the
+            // `m=` lines. A section with port 0 is rejected.
+            let mut sections: Vec<(Kind, Option<String>, bool, bool, Option<String>)> = Vec::new();
             for line in desc.sdp.trim().lines() {
                 let line = line.trim();
-                if line.starts_with("m=audio") {
-                    sections.push((Kind::Audio, None, true));
+                let kind = if line.starts_with("m=audio") {
+                    Some(Kind::Audio)
                 } else if line.starts_with("m=video") {
-                    sections.push((Kind::Video, None, true));
+                    Some(Kind::Video)
+                } else {
+                    None
+                };
+                if let Some(kind) = kind {
+                    let rejected = line.split_whitespace().nth(1) == Some("0");
+                    sections.push((kind, None, true, rejected, None));
                 } else if let Some(last) = sections.last_mut() {
                     if let Some(v) = line.strip_prefix("a=mid:") {
                         last.1 = Some(v.trim().to_owned());
                     } else if matches!(line, "a=recvonly" | "a=inactive") {
                         last.2 = false;
+                    } else if let Some(v) = line
+                        .strip_prefix("a=msid:")
+                        .or_else(|| line.split_once(" msid:").map(|(_, v)| v))
+                    {
+                        // The first word names the stream.
+                        last.4.get_or_insert_with(|| {
+                            v.split_whitespace().next().unwrap_or("").to_owned()
+                        });
+                    }
+                }
+            }
+            if desc.kind == SdpType::Answer {
+                // Like libwebrtc: a section the answer rejects stops its transceiver, and a
+                // stopped transceiver whose section is rejected on both sides is dropped from the
+                // list, which moves the ones after it up.
+                let mut dropped = 0;
+                for (at, (_, _, _, rejected, _)) in sections.iter().enumerate() {
+                    if *rejected && at >= dropped && at - dropped < st.transceivers.len() {
+                        let gone = st.transceivers.remove(at - dropped);
+                        gone.info.lock().unwrap().direction = Direction::Stopped;
+                        dropped += 1;
                     }
                 }
             }
             if desc.kind == SdpType::Offer {
-                for (kind, mid, remote_sends) in sections {
+                for (kind, mid, remote_sends, rejected, msid) in sections {
+                    if rejected {
+                        continue;
+                    }
+                    // A section of a transceiver that is still there is not a new transceiver.
+                    let existing = mid.as_ref().and_then(|m| {
+                        st.transceivers
+                            .iter()
+                            .find(|t| t.info.lock().unwrap().mid.as_ref() == Some(m))
+                            .cloned()
+                    });
                     // A section the remote only receives makes a transceiver and no track.
                     let direction = if remote_sends {
                         Direction::SendRecv
                     } else {
                         Direction::RecvOnly
                     };
-                    let t = FakeTransceiver::new(mid, kind, direction);
-                    st.transceivers.push(t.clone());
+                    let t = existing.unwrap_or_else(|| {
+                        let t = FakeTransceiver::new(mid, kind, direction);
+                        st.transceivers.push(t.clone());
+                        t
+                    });
                     if !remote_sends {
                         continue;
                     }
-                    let track_id = format!("track{}", st.transceivers.len());
+                    static TRACKS: std::sync::atomic::AtomicU64 =
+                        std::sync::atomic::AtomicU64::new(1);
+                    let track_id = format!(
+                        "track{}",
+                        TRACKS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    );
                     tracks.push(TrackInfo {
                         transceiver: t.info(),
                         track: Some(TrackHandle(FakeTrack::remote(&track_id, kind))),
                         track_id,
-                        stream_ids: vec!["stream1".into()],
+                        stream_ids: vec![msid.unwrap_or_else(|| "stream1".into())],
                     });
                 }
             }

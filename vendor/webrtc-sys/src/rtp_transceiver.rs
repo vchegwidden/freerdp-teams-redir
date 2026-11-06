@@ -48,6 +48,8 @@ pub mod ffi {
 
         fn media_type(self: &RtpTransceiver) -> MediaType;
         fn mid(self: &RtpTransceiver) -> Result<String>;
+        // teams-redir patch
+        fn id(self: &RtpTransceiver) -> usize;
         fn sender(self: &RtpTransceiver) -> SharedPtr<RtpSender>;
         fn receiver(self: &RtpTransceiver) -> SharedPtr<RtpReceiver>;
         fn stopped(self: &RtpTransceiver) -> bool;

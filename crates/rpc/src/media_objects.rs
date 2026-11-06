@@ -17,7 +17,7 @@
 
 use std::sync::Arc;
 
-use media::{AudioDevice, Kind, Track, VideoConstraints};
+use media::{AudioDevice, Direction, Kind, Track, VideoConstraints};
 use proto::envelope::{self, RpcRequest};
 use proto::hresult;
 use serde_json::Value;
@@ -402,7 +402,7 @@ impl PeerConnections {
                 false,
             ),
         };
-        let Some(track) = tracks.into_iter().find(|t| t.kind() == Kind::Video) else {
+        let Some(track) = tracks.into_iter().rfind(|t| t.kind() == Kind::Video) else {
             return ", no video track yet".into();
         };
         let window = id as u32;
@@ -422,15 +422,34 @@ impl PeerConnections {
         ", showing its video".into()
     }
 
-    /// A video track arrived for `stream`: elements that were waiting for one can show it now.
+    /// A video track arrived for `stream`: elements that were waiting for one can show it now,
+    /// and ones that show an older track of the stream switch to the newest.
     pub(crate) fn refresh_elements(&mut self, stream: u64) {
-        let waiting: Vec<u64> = self
+        let newest = self
+            .remote_streams
+            .get(&stream)
+            .into_iter()
+            .flatten()
+            .filter_map(|t| self.remote_tracks.get(t))
+            .rfind(|t| t.kind() == Kind::Video)
+            .map(|t| t.id());
+        let stale: Vec<u64> = self
             .elements
             .iter()
-            .filter(|(_, e)| e.source == Some(stream) && e.bound.is_none())
+            .filter(|(_, e)| {
+                e.source == Some(stream)
+                    && match (&e.bound, &newest) {
+                        (None, _) => true,
+                        (Some(b), Some(n)) => b.id() != *n,
+                        (Some(_), None) => false,
+                    }
+            })
             .map(|(id, _)| *id)
             .collect();
-        for id in waiting {
+        for id in stale {
+            if let Some(track) = self.elements.get_mut(&id).and_then(|e| e.bound.take()) {
+                track.set_video_sink(None);
+            }
             self.bind_video(id);
         }
     }
@@ -575,11 +594,8 @@ impl PeerConnections {
             .first()
             .and_then(|a| a["direction"].as_str())
             .and_then(parse_direction);
-        let handle = self
-            .pcs
-            .get(&at.pc)
-            .and_then(|pc| pc.transceivers.get(at.index))
-            .map(|r| r.handle.clone());
+        let sending = matches!(direction, Some(Direction::SendRecv | Direction::SendOnly));
+        let handle = self.handle_for(at, sending);
         let (Some(direction), Some(handle)) = (direction, handle) else {
             return failure(
                 req,
@@ -655,12 +671,7 @@ impl PeerConnections {
                 None => return failure(req, hresult::ERROR_NOT_FOUND, "Track not found"),
             },
         };
-        let Some(handle) = self
-            .pcs
-            .get(&at.pc)
-            .and_then(|pc| pc.transceivers.get(at.index))
-            .map(|r| r.handle.clone())
-        else {
+        let Some(handle) = self.handle_for(at, track.is_some()) else {
             return failure(req, hresult::ERROR_NOT_FOUND, "Sender not found");
         };
         let note = match &track {
