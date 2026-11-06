@@ -7,6 +7,7 @@
 
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{env, fs};
 
@@ -18,12 +19,18 @@ use transcript::{Dir, parse_line};
 #[derive(Default)]
 struct PrintHost {
     closed: AtomicBool,
+    /// The newest offer or answer this run produced, as the JSON text it was sent in.
+    last_desc: Mutex<Option<String>>,
 }
 
 impl Host for PrintHost {
     fn write(&self, conn: ConnId, data: &[u8]) -> bool {
         let end = data.iter().position(|&b| b == 0).unwrap_or(data.len());
-        println!("OUT conn {conn} {}", String::from_utf8_lossy(&data[..end]));
+        let text = String::from_utf8_lossy(&data[..end]);
+        if text.contains("\"desc\"") && text.contains("a=fingerprint") {
+            *self.last_desc.lock().unwrap() = Some(text.to_string());
+        }
+        println!("OUT conn {conn} {text}");
         true
     }
 
@@ -36,6 +43,25 @@ impl Host for PrintHost {
             eprintln!("log[{level:?}] {msg}");
         }
     }
+}
+
+/// The value after `prefix` in the JSON text of an SDP, up to its next (escaped) line end.
+fn sdp_value<'a>(json: &'a str, prefix: &str) -> Option<&'a str> {
+    let start = json.find(prefix)? + prefix.len();
+    let len = json[start..].find("\\r")?;
+    Some(&json[start..start + len])
+}
+
+/// A recorded `setLocalDescription` carries the DTLS fingerprint and ICE credentials of the run
+/// that was recorded, and libwebrtc refuses them in this run. Swap in this run's.
+fn adopt_identity(msg: &str, last_desc: &str) -> String {
+    let mut out = msg.to_string();
+    for prefix in ["a=fingerprint:sha-256 ", "a=ice-ufrag:", "a=ice-pwd:"] {
+        if let (Some(old), Some(new)) = (sdp_value(msg, prefix), sdp_value(last_desc, prefix)) {
+            out = out.replace(&format!("{prefix}{old}"), &format!("{prefix}{new}"));
+        }
+    }
+    out
 }
 
 fn channel(name: &str) -> Option<Channel> {
@@ -102,8 +128,25 @@ fn main() -> ExitCode {
         if opened.insert(conn) {
             core.channel_opened(conn, ch);
         }
-        println!("IN  conn {conn} {} {}", entry.channel, entry.msg);
-        core.data(conn, entry.msg.as_bytes());
+        let msg = if entry.msg.contains("\"setLocalDescription\"") {
+            // The offer being applied is still on its way out of the core.
+            let mut desc = host.last_desc.lock().unwrap().clone();
+            for _ in 0..100 {
+                if desc.is_some() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+                desc = host.last_desc.lock().unwrap().clone();
+            }
+            match desc {
+                Some(desc) => adopt_identity(&entry.msg, &desc),
+                None => entry.msg.clone(),
+            }
+        } else {
+            entry.msg.clone()
+        };
+        println!("IN  conn {conn} {} {msg}", entry.channel);
+        core.data(conn, msg.as_bytes());
         core.flush();
         fed += 1;
     }

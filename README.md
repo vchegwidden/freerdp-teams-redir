@@ -145,12 +145,16 @@ closes the device, so its light goes off.
 A FreeRDP add-in has no window to draw in, so remote pictures and your own self view are shown by
 a small helper program, `teams-redir-video` (`crates/video-window`, SDL3, Wayland and X11), which the
 add-in starts when the first picture arrives. It opens **one ordinary window per video element**
-that Teams creates, and closes it when Teams does. It honours mirroring, object-fit and visibility
+that Teams creates (see below for when). It honours mirroring, object-fit and visibility
 as Teams sets them. The windows are not drawn over the Teams window: Teams sends where it wants the
 picture placed, but this client does not composite into the RDP window (that needs support in the
 FreeRDP client itself). The windows use the application id `teams-redir-video`, so a window rule in
-your compositor can place or float them. If the helper cannot start, the call and its audio carry on
-without pictures, and a warning is logged.
+your compositor can place or float them. Teams opens and closes video elements often, and each window
+that comes or goes makes a tiling desktop rearrange, so a window opens only once its picture has kept
+coming for 0.7 s, and a window whose element closed stays for 5 s so the next element takes it over
+instead of a new one opening (`TEAMS_REDIR_VIDEO_OPEN_DELAY_MS` and `TEAMS_REDIR_VIDEO_KEEP_MS`
+change these; the helper reads them from the environment of the FreeRDP client). If the helper cannot
+start, the call and its audio carry on without pictures, and a warning is logged.
 
 `teams-redir-video` is installed next to `libteams-redir-client.so`; `TEAMS_REDIR_VIDEO_HELPER`
 names another path. `TEAMS_REDIR_VIDEO=off` stops offering video altogether.
@@ -169,6 +173,8 @@ Environment variables of the FreeRDP process:
 | `TEAMS_REDIR_BUILTIN_TONES` | `off`: no made-up tone for a sound that has no file |
 | `TEAMS_REDIR_VIDEO` | `off`: do not offer video (no cameras, no video codecs) |
 | `TEAMS_REDIR_VIDEO_HELPER` | Path of `teams-redir-video`; default: next to the add-in, then `PATH` |
+| `TEAMS_REDIR_VIDEO_OPEN_DELAY_MS` | How long a picture must keep coming before its window opens (default 700) |
+| `TEAMS_REDIR_VIDEO_KEEP_MS` | How long a window stays after its element closed, for the next one to take over (default 5000; 0 closes at once) |
 | `TEAMS_REDIR_CPC` | How the `cpc.1` channel answers: `honest` (default), `macstore`, `off` |
 | `TEAMS_REDIR_CLIENT_PLATFORM`, `_APP_NAME`, `_APP_VERSION`, `_FLAVOR`, `_WEBRTC`, `_WEBRTC_REDIRECTOR` | The client identity strings sent to the host |
 

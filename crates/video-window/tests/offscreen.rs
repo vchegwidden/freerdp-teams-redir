@@ -38,9 +38,15 @@ struct Helper {
 
 impl Helper {
     fn start() -> Helper {
+        Helper::start_with("0")
+    }
+
+    /// `open_delay` is `TEAMS_REDIR_VIDEO_OPEN_DELAY_MS`.
+    fn start_with(open_delay: &str) -> Helper {
         let mut child = Command::new(env!("CARGO_BIN_EXE_teams-redir-video"))
             .env("SDL_VIDEODRIVER", "offscreen")
             .env("TEAMS_REDIR_VIDEO_CHECK", "1")
+            .env("TEAMS_REDIR_VIDEO_OPEN_DELAY_MS", open_delay)
             .stdin(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -83,6 +89,21 @@ impl Helper {
             last = Some(s);
         }
         last.expect("no samples")
+    }
+
+    /// The next `window N opened` or `window N reused` line: how the helper got a window for N.
+    fn next_how(&self, window: u32) -> String {
+        loop {
+            let line = self
+                .lines
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("the helper printed nothing");
+            let p: Vec<&str> = line.split_whitespace().collect();
+            if p.len() == 3 && p[0] == "window" && p[1] == window.to_string() {
+                return p[2].to_owned();
+            }
+            assert!(!line.contains("cannot"), "helper error: {line}");
+        }
     }
 
     /// The next `window N left .. middle .. right ..` line, as the three colours.
@@ -155,6 +176,40 @@ fn frames_are_drawn_in_the_right_colours_and_mirroring_flips_them() {
     drop(h.child.stdin.take());
     let status = h.child.wait().unwrap();
     assert!(status.success(), "{status}");
+}
+
+#[test]
+fn a_closed_window_is_taken_over_by_the_next_element_instead_of_a_new_one_opening() {
+    let mut h = Helper::start();
+    h.send(&split_frame(1, 64, 48, RED, BLUE));
+    assert_eq!(h.next_how(1), "opened");
+    h.send(&Message::Close { window: 1 });
+    // Teams closes one element and opens another a moment later, for the same picture.
+    h.send(&split_frame(2, 64, 48, BLUE, RED));
+    assert_eq!(h.next_how(2), "reused");
+    let [left, _, right] = h.wait_samples(2, |_| true);
+    assert!(near(&left, (0, 0, 255), 24), "left {left}");
+    assert!(near(&right, (255, 0, 0), 24), "right {right}");
+    // Two at once need two windows.
+    h.send(&split_frame(3, 64, 48, RED, BLUE));
+    assert_eq!(h.next_how(3), "opened");
+    drop(h.child.stdin.take());
+    assert!(h.child.wait().unwrap().success());
+}
+
+#[test]
+fn a_window_opens_only_once_its_picture_has_kept_coming() {
+    let mut h = Helper::start_with("400");
+    // An element that is gone again within the delay never gets a window.
+    h.send(&split_frame(1, 64, 48, RED, BLUE));
+    h.send(&Message::Close { window: 1 });
+    // One that stays does, from the first frame after the delay.
+    h.send(&split_frame(2, 64, 48, RED, BLUE));
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    h.send(&split_frame(2, 64, 48, RED, BLUE));
+    assert_eq!(h.next_how(2), "opened");
+    drop(h.child.stdin.take());
+    assert!(h.child.wait().unwrap().success());
 }
 
 #[test]

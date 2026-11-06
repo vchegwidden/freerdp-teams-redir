@@ -7,6 +7,12 @@
 //! works on Wayland and on X11, scales on the GPU where there is one, and shows up under the
 //! application id `teams-redir-video`, which a window rule can match to place the windows.
 //!
+//! Teams opens and closes video elements often (a participant starts or stops, the layout changes),
+//! and every window that appears or goes makes a tiling desktop rearrange. So a window opens only
+//! once its picture has been coming for `TEAMS_REDIR_VIDEO_OPEN_DELAY_MS` (default 700), and a
+//! window whose element closed stays for `TEAMS_REDIR_VIDEO_KEEP_MS` (default 5000) so that the
+//! next element can take it over instead of a new window opening.
+//!
 //! `TEAMS_REDIR_VIDEO_CHECK=1` makes it print the colours of three points of a window after every
 //! draw to stderr, for tests.
 
@@ -15,7 +21,7 @@ use std::ffi::{CStr, CString};
 use std::io::{self, Read};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sdl3_sys::everything::*;
 use videoipc::{Fit, MAGIC, Message, read_message};
@@ -42,9 +48,44 @@ struct Pending {
     visible: Option<bool>,
 }
 
+/// Things kept for a while after their owner is done with them, newest last.
+struct Spares<T> {
+    items: Vec<(Instant, T)>,
+}
+
+impl<T> Spares<T> {
+    fn new() -> Self {
+        Spares { items: Vec::new() }
+    }
+
+    fn keep(&mut self, item: T, now: Instant) {
+        self.items.push((now, item));
+    }
+
+    /// The most recently kept one.
+    fn take(&mut self) -> Option<T> {
+        self.items.pop().map(|(_, item)| item)
+    }
+
+    /// Removes and returns the ones kept for `keep` or longer.
+    fn expire(&mut self, now: Instant, keep: Duration) -> Vec<T> {
+        let (old, fresh): (Vec<_>, Vec<_>) = std::mem::take(&mut self.items)
+            .into_iter()
+            .partition(|(since, _)| now.duration_since(*since) >= keep);
+        self.items = fresh;
+        old.into_iter().map(|(_, item)| item).collect()
+    }
+}
+
 struct App {
     windows: HashMap<u32, Window>,
     pending: HashMap<u32, Pending>,
+    /// When the first frame of an element without a window arrived.
+    first_frame: HashMap<u32, Instant>,
+    /// Windows of closed elements, open for the next element to take.
+    spare: Spares<Window>,
+    open_delay: Duration,
+    keep: Duration,
     check: bool,
 }
 
@@ -61,47 +102,23 @@ impl App {
     fn window(&mut self, id: u32, first_frame: Option<(u32, u32)>) -> Option<&mut Window> {
         if !self.windows.contains_key(&id) {
             let (fw, fh) = first_frame?;
-            let title = CString::new(format!("Teams video {id}")).ok()?;
-            // A window opens at a width of 640 and the picture's shape.
-            let height = (640.0 * f64::from(fh) / f64::from(fw.max(1)))
-                .round()
-                .max(1.0) as i32;
-            // SAFETY: plain SDL calls with valid arguments; failures are checked.
-            let (window, renderer) = unsafe {
-                let window = SDL_CreateWindow(title.as_ptr(), 640, height, SDL_WINDOW_RESIZABLE);
-                if window.is_null() {
-                    eprintln!("teams-redir-video: cannot open a window: {}", sdl_error());
-                    return None;
-                }
-                let renderer = SDL_CreateRenderer(window, ptr::null());
-                if renderer.is_null() {
-                    eprintln!(
-                        "teams-redir-video: cannot create a renderer: {}",
-                        sdl_error()
-                    );
-                    SDL_DestroyWindow(window);
-                    return None;
-                }
-                SDL_SetRenderVSync(renderer, 1);
-                (window, renderer)
-            };
             let said = self.pending.remove(&id).unwrap_or_default();
-            let mut w = Window {
-                window,
-                renderer,
-                texture: ptr::null_mut(),
-                texture_size: (0, 0),
-                has_picture: false,
-                mirrored: said.mirrored.unwrap_or(false),
-                fit: said.fit.unwrap_or(Fit::Contain),
-                visible: true,
+            let (mut w, how) = match self.spare.take() {
+                Some(w) => (w, "reused"),
+                None => {
+                    let since = *self.first_frame.entry(id).or_insert_with(Instant::now);
+                    if since.elapsed() < self.open_delay {
+                        // Not yet: it may be gone again in a moment. Keep what was said.
+                        self.pending.insert(id, said);
+                        return None;
+                    }
+                    (Window::open(id, fw, fh)?, "opened")
+                }
             };
-            if let Some(Ok(t)) = said.title.map(CString::new) {
-                // SAFETY: the window is live and `t` is NUL-terminated.
-                unsafe { SDL_SetWindowTitle(window, t.as_ptr()) };
-            }
-            if said.visible == Some(false) {
-                w.set_visible(false);
+            self.first_frame.remove(&id);
+            w.apply(said);
+            if self.check {
+                eprintln!("window {id} {how}");
             }
             self.windows.insert(id, w);
         }
@@ -125,8 +142,13 @@ impl App {
             }
             Message::Close { window } => {
                 self.pending.remove(&window);
+                self.first_frame.remove(&window);
                 if let Some(w) = self.windows.remove(&window) {
-                    w.destroy();
+                    if w.visible && !self.keep.is_zero() {
+                        self.spare.keep(w, Instant::now());
+                    } else {
+                        w.destroy();
+                    }
                 }
             }
             Message::Visible { window, visible } => match self.windows.get_mut(&window) {
@@ -190,6 +212,55 @@ impl App {
 }
 
 impl Window {
+    /// Opens a window at a width of 640 and the picture's shape.
+    fn open(id: u32, fw: u32, fh: u32) -> Option<Window> {
+        let title = CString::new(format!("Teams video {id}")).ok()?;
+        let height = (640.0 * f64::from(fh) / f64::from(fw.max(1)))
+            .round()
+            .max(1.0) as i32;
+        // SAFETY: plain SDL calls with valid arguments; failures are checked.
+        let (window, renderer) = unsafe {
+            let window = SDL_CreateWindow(title.as_ptr(), 640, height, SDL_WINDOW_RESIZABLE);
+            if window.is_null() {
+                eprintln!("teams-redir-video: cannot open a window: {}", sdl_error());
+                return None;
+            }
+            let renderer = SDL_CreateRenderer(window, ptr::null());
+            if renderer.is_null() {
+                eprintln!(
+                    "teams-redir-video: cannot create a renderer: {}",
+                    sdl_error()
+                );
+                SDL_DestroyWindow(window);
+                return None;
+            }
+            SDL_SetRenderVSync(renderer, 1);
+            (window, renderer)
+        };
+        Some(Window {
+            window,
+            renderer,
+            texture: ptr::null_mut(),
+            texture_size: (0, 0),
+            has_picture: false,
+            mirrored: false,
+            fit: Fit::Contain,
+            visible: true,
+        })
+    }
+
+    /// Gives a new or taken-over window the settings its element asked for.
+    fn apply(&mut self, said: Pending) {
+        self.mirrored = said.mirrored.unwrap_or(false);
+        self.fit = said.fit.unwrap_or(Fit::Contain);
+        self.has_picture = false;
+        if let Some(Ok(t)) = said.title.map(CString::new) {
+            // SAFETY: the window is live and `t` is NUL-terminated.
+            unsafe { SDL_SetWindowTitle(self.window, t.as_ptr()) };
+        }
+        self.set_visible(said.visible != Some(false));
+    }
+
     fn set_visible(&mut self, visible: bool) {
         self.visible = visible;
         // SAFETY: the window is live.
@@ -422,9 +493,20 @@ fn main() {
         SDL_RegisterEvents(1)
     };
     let rx = read_input(wake);
+    let millis = |name: &str, default: u64| {
+        let ms = std::env::var(name)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(default);
+        Duration::from_millis(ms)
+    };
     let mut app = App {
         windows: HashMap::new(),
         pending: HashMap::new(),
+        first_frame: HashMap::new(),
+        spare: Spares::new(),
+        open_delay: millis("TEAMS_REDIR_VIDEO_OPEN_DELAY_MS", 700),
+        keep: millis("TEAMS_REDIR_VIDEO_KEEP_MS", 5000),
         check,
     };
     'run: loop {
@@ -455,8 +537,14 @@ fn main() {
         for m in coalesce(batch) {
             app.handle(m);
         }
+        for w in app.spare.expire(Instant::now(), app.keep) {
+            w.destroy();
+        }
     }
     for (_, w) in app.windows.drain() {
+        w.destroy();
+    }
+    for w in app.spare.expire(Instant::now(), Duration::ZERO) {
         w.destroy();
     }
     // SAFETY: nothing of SDL's is used after this.
@@ -503,6 +591,21 @@ mod tests {
         let (src, dst) = place(Fit::Fill, pic, out);
         assert!(close(src, (0.0, 0.0, 160.0, 90.0)));
         assert!(close(dst, (0.0, 0.0, 100.0, 100.0)));
+    }
+
+    #[test]
+    fn spares_come_back_newest_first_and_expire_by_age() {
+        let t0 = Instant::now();
+        let at = |s: u64| t0 + Duration::from_secs(s);
+        let mut spares = Spares::new();
+        spares.keep("old", at(0));
+        spares.keep("new", at(4));
+        // At 5 s only the first has been kept for 5 s.
+        assert_eq!(spares.expire(at(5), Duration::from_secs(5)), vec!["old"]);
+        spares.keep("newer", at(6));
+        assert_eq!(spares.take(), Some("newer"));
+        assert_eq!(spares.take(), Some("new"));
+        assert_eq!(spares.take(), None);
     }
 
     #[test]
