@@ -1263,6 +1263,22 @@ mod tests {
         assert_eq!(offered(&offer.sdp), ["sendrecv"]);
     }
 
+    /// `replaceTrack(null)` reaches the engine as `set_sender_track(None)`; it used to
+    /// dereference a null track and kill the whole client.
+    #[test]
+    fn clearing_a_sender_track_does_not_crash() {
+        let engine = LkEngine::new();
+        let (sink, _log) = fake::collecting_sink();
+        let pc = engine
+            .create_peer_connection(PcConfig::default(), sink)
+            .unwrap();
+        let t = pc
+            .add_transceiver(Kind::Audio, Direction::SendRecv)
+            .unwrap();
+        t.set_sender_track(None).unwrap();
+        assert_eq!(t.sender_track_id(), None);
+    }
+
     /// Needs a webcam. Sends it to a second peer over loopback and checks, from the receiver's
     /// stats alone, that video frames arrived and decoded. No image is read or stored.
     /// `cargo test --release -p teams-redir-media --features libwebrtc camera_video_reaches -- --ignored --nocapture`

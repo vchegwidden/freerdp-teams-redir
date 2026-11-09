@@ -149,7 +149,9 @@ RtpSender::RtpSender(
       peer_connection_(std::move(peer_connection)) {}
 
 bool RtpSender::set_track(std::shared_ptr<MediaStreamTrack> track) const {
-  return sender_->SetTrack(track->rtc_track().get());
+  // teams-redir patch: a null track means replaceTrack(null) (stop sending);
+  // upstream dereferenced it and crashed.
+  return sender_->SetTrack(track ? track->rtc_track().get() : nullptr);
 }
 
 std::shared_ptr<MediaStreamTrack> RtpSender::track() const {

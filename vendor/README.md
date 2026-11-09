@@ -22,7 +22,8 @@ marked `teams-redir patch`:
 Drop this directory and the `[patch.crates-io]` entry in `../Cargo.toml` when upstream has both.
 
 `webrtc-sys/` is `webrtc-sys` 0.3.52 from crates.io (Copyright LiveKit, Inc., Apache-2.0) without its
-`test/` directory, with two changes, marked `teams-redir patch`: `RtpTransceiver::id` (see above), and in
+`test/` directory, with three changes, marked `teams-redir patch`: `RtpTransceiver::id` (see above), `RtpSender::set_track`
+accepting a null track (`replaceTrack(null)` used to dereference it and crash the client), and in
 `src/video_encoder_factory.cpp`:
 
 - The VAAPI H.264 encoder is only offered when `TEAMS_REDIR_VAAPI=1`. libwebrtc otherwise picks it
