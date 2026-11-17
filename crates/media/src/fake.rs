@@ -103,6 +103,18 @@ impl MediaEngine for FakeEngine {
         }))
     }
 
+    fn create_screen_capture(
+        &self,
+        constraints: VideoConstraints,
+    ) -> Result<Arc<dyn Track>, EngineError> {
+        Ok(Arc::new(FakeTrack {
+            id: format!("screen-{}", constraints.frame_rate.unwrap_or(0.0)),
+            kind: Kind::Video,
+            sink: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new((true, false))),
+        }))
+    }
+
     fn set_playout_device(&self, device: &AudioDevice) -> Result<(), EngineError> {
         if device.id == "missing" {
             return Err(EngineError::new(

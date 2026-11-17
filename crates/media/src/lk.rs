@@ -52,6 +52,8 @@ pub struct LkEngine {
     inner: OnceLock<Result<Inner, String>>,
     /// Whether the platform audio device module started; decided once.
     adm: OnceLock<bool>,
+    /// The screen capture all screen tracks share.
+    screens: OnceLock<Arc<crate::screen::ScreenHub>>,
 }
 
 impl LkEngine {
@@ -155,7 +157,7 @@ impl MediaEngine for LkEngine {
         let track = f.create_device_audio_track(&format!("mic-{}", device.id));
         Ok(Arc::new(LkTrack {
             track: MediaStreamTrack::Audio(track),
-            camera: None,
+            feed: None,
             rt: None,
             sink_task: Mutex::new(None),
         }))
@@ -175,11 +177,15 @@ impl MediaEngine for LkEngine {
         if lk.track.id() == id || lk.rt.is_some() {
             return Ok(track.clone());
         }
-        let renamed = match (&lk.track, &lk.camera) {
-            (MediaStreamTrack::Video(_), Some(cam)) => {
+        let renamed = match (&lk.track, &lk.feed) {
+            (MediaStreamTrack::Video(_), Some(feed)) => {
                 let inner = self.inner()?;
                 let _runtime = inner.handle.enter();
-                MediaStreamTrack::Video(inner.factory.create_video_track(id, cam.source.clone()))
+                MediaStreamTrack::Video(
+                    inner
+                        .factory
+                        .create_video_track(id, feed.source().clone()),
+                )
             }
             (MediaStreamTrack::Audio(_), None) => {
                 MediaStreamTrack::Audio(self.audio()?.create_device_audio_track(id))
@@ -189,7 +195,7 @@ impl MediaEngine for LkEngine {
         renamed.set_enabled(lk.track.enabled());
         Ok(Arc::new(LkTrack {
             track: renamed,
-            camera: lk.camera.clone(),
+            feed: lk.feed.clone(),
             rt: None,
             sink_task: Mutex::new(None),
         }))
@@ -246,7 +252,35 @@ impl MediaEngine for LkEngine {
             .map_err(|e| EngineError::new(ErrorKind::Internal, e))?;
         Ok(Arc::new(LkTrack {
             track: MediaStreamTrack::Video(track),
-            camera: Some(Arc::new(feed)),
+            feed: Some(Arc::new(feed)),
+            rt: None,
+            sink_task: Mutex::new(None),
+        }))
+    }
+
+    fn create_screen_capture(
+        &self,
+        constraints: VideoConstraints,
+    ) -> Result<Arc<dyn Track>, EngineError> {
+        let inner = self.inner()?;
+        // The source starts a task of its own, so it has to be made inside the runtime.
+        let _runtime = inner.handle.enter();
+        let source = NativeVideoSource::new(
+            VideoResolution {
+                width: constraints.width.unwrap_or(1920),
+                height: constraints.height.unwrap_or(1080),
+            },
+            true,
+        );
+        let track = inner.factory.create_video_track("screen", source.clone());
+        let feed = self
+            .screens
+            .get_or_init(Default::default)
+            .add(source, constraints)
+            .map_err(|e| EngineError::new(ErrorKind::Internal, e))?;
+        Ok(Arc::new(LkTrack {
+            track: MediaStreamTrack::Video(track),
+            feed: Some(Arc::new(feed)),
             rt: None,
             sink_task: Mutex::new(None),
         }))
@@ -379,7 +413,7 @@ impl MediaEngine for LkEngine {
                 stream_ids: t.streams.iter().map(|s| s.id()).collect(),
                 track: Some(TrackHandle(Arc::new(LkTrack {
                     track: t.track.clone(),
-                    camera: None,
+                    feed: None,
                     rt: Some(rt.clone()),
                     sink_task: Mutex::new(None),
                 }))),
@@ -561,8 +595,8 @@ impl PeerConnection for LkPc {
 
 struct LkTrack {
     track: MediaStreamTrack,
-    /// Set for a camera track.
-    camera: Option<Arc<CameraFeed>>,
+    /// Set for a local camera or screen capture.
+    feed: Option<Arc<dyn LocalFeed>>,
     /// For a remote track, the runtime that drives its frame stream.
     rt: Option<Handle>,
     /// The task that hands a remote video track's frames to the sink.
@@ -729,6 +763,45 @@ impl CameraFeed {
     }
 }
 
+/// A local video capture behind a track: a camera or a screen.
+trait LocalFeed: Send + Sync {
+    fn source(&self) -> &NativeVideoSource;
+    /// Where the frames also go for a self view.
+    fn preview(&self) -> &Arc<Mutex<Option<VideoSink>>>;
+    fn set_enabled(&self, enabled: bool);
+    fn stop(&self);
+}
+
+impl LocalFeed for CameraFeed {
+    fn source(&self) -> &NativeVideoSource {
+        &self.source
+    }
+    fn preview(&self) -> &Arc<Mutex<Option<VideoSink>>> {
+        &self.preview
+    }
+    fn set_enabled(&self, enabled: bool) {
+        CameraFeed::set_enabled(self, enabled)
+    }
+    fn stop(&self) {
+        CameraFeed::stop(self)
+    }
+}
+
+impl LocalFeed for crate::screen::ScreenFeed {
+    fn source(&self) -> &NativeVideoSource {
+        &self.source
+    }
+    fn preview(&self) -> &Arc<Mutex<Option<VideoSink>>> {
+        &self.preview
+    }
+    fn set_enabled(&self, enabled: bool) {
+        crate::screen::ScreenFeed::set_enabled(self, enabled)
+    }
+    fn stop(&self) {
+        crate::screen::ScreenFeed::stop(self)
+    }
+}
+
 /// Hands a camera frame to libwebrtc.
 fn push_frame(source: &NativeVideoSource, f: &camera::Frame) {
     let (w, h) = (f.width, f.height);
@@ -756,8 +829,8 @@ impl Track for LkTrack {
 
     fn set_enabled(&self, enabled: bool) {
         self.track.set_enabled(enabled);
-        if let Some(cam) = &self.camera {
-            cam.set_enabled(enabled);
+        if let Some(feed) = &self.feed {
+            feed.set_enabled(enabled);
         }
     }
 
@@ -765,14 +838,14 @@ impl Track for LkTrack {
     /// camera is closed at once.
     fn stop(&self) {
         self.track.set_enabled(false);
-        if let Some(cam) = &self.camera {
-            cam.stop();
+        if let Some(feed) = &self.feed {
+            feed.stop();
         }
     }
 
     fn set_video_sink(&self, sink: Option<VideoSink>) {
-        if let Some(cam) = &self.camera {
-            *cam.preview.lock().unwrap() = sink;
+        if let Some(feed) = &self.feed {
+            *feed.preview().lock().unwrap() = sink;
             return;
         }
         let (MediaStreamTrack::Video(video), Some(rt)) = (&self.track, &self.rt) else {
@@ -1106,6 +1179,37 @@ mod tests {
         );
         a.close();
         b.close();
+    }
+
+    /// The real screen capture: shows the desktop's picker (once for two tracks), so it needs a
+    /// person to pick a screen within 30 s. `cargo test -p teams-redir-media --features libwebrtc -- --ignored screen`
+    #[test]
+    #[ignore = "opens the system screen-share picker"]
+    fn screen_capture_delivers_frames_after_the_picker() {
+        let engine = LkEngine::new();
+        let want = VideoConstraints {
+            width: Some(1280),
+            height: Some(720),
+            frame_rate: Some(10.0),
+        };
+        // Teams makes several screen tracks for one share: one capture, one picker, serves them.
+        let other = engine.create_screen_capture(want).unwrap();
+        let track = engine.create_screen_capture(want).unwrap();
+        let frames = Arc::new(Mutex::new(Vec::new()));
+        let f = frames.clone();
+        track.set_video_sink(Some(Arc::new(move |v: &crate::VideoFrame| {
+            f.lock().unwrap().push((v.width, v.height));
+        })));
+        let deadline = std::time::Instant::now() + Duration::from_secs(30);
+        while frames.lock().unwrap().len() < 5 && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        track.stop();
+        other.stop();
+        let frames = frames.lock().unwrap();
+        assert!(frames.len() >= 5, "only {} frames", frames.len());
+        let (w, h) = frames[0];
+        assert!(w <= 1280 && h <= 720 && w > 0 && h > 0, "{w}x{h}");
     }
 
     /// Teams asks for max-bundle, and the meeting server rejects a re-offer whose video sections

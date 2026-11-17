@@ -110,7 +110,7 @@ fn patched_session_info_args(
     (args, note)
 }
 
-/// Every feature `disabled` except `unifiedplan`; `microphone` is left out when there is an input device; `clipRectMode` disabled and no simulcast.
+/// Every feature `disabled` except `unifiedplan` and `screenshare` (unless turned off); `microphone` is left out when there is an input device; `clipRectMode` disabled and no simulcast.
 pub fn session_info_args(config: &Config, session: &SessionInfo, microphone: bool) -> Value {
     let id = &config.identity;
     let mut info = json!({
@@ -126,7 +126,7 @@ pub fn session_info_args(config: &Config, session: &SessionInfo, microphone: boo
         "session": { "vdiMode": 0, "endpointId": config.endpoint_id() },
         "features": {
             "clipRectMode": "disabled",
-            "screenshare": "disabled",
+            "screenshare": if config.screen_share { "enabled" } else { "disabled" },
             "multimonitorscreenshare": "disabled",
                         "unifiedplan": "enabled",
             "datachannel": "disabled",
@@ -236,6 +236,20 @@ mod tests {
         assert_eq!(args["features"]["datachannel"], json!("disabled"));
         assert!(note.contains("ignored"));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn screen_sharing_is_offered_unless_turned_off() {
+        let s = SessionInfo::default();
+        let on = session_info_args(&config(), &s, true);
+        assert_eq!(on["features"]["screenshare"], json!("enabled"));
+        assert_eq!(on["features"]["multimonitorscreenshare"], json!("disabled"));
+        for (key, value) in [("TEAMS_REDIR_SCREENSHARE", "off"), ("TEAMS_REDIR_VIDEO", "off")] {
+            let off = Config::from_lookup(move |k| (k == key).then(|| value.to_owned()));
+            assert!(!off.screen_share);
+            let args = session_info_args(&off, &s, true);
+            assert_eq!(args["features"]["screenshare"], json!("disabled"));
+        }
     }
 
     #[test]

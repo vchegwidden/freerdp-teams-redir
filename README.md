@@ -7,8 +7,8 @@ optimization", so audio is handled locally instead of being relayed through the 
 
 > **Status: early development build, not a release.** Audio calls work, including in a scheduled
 > meeting, where the other people's video and a shared screen also show up (see
-> [Status](#status)). Sending your own video in a call is not confirmed yet, and sending your screen
-> does not exist. This is an independent project and is not affiliated with or endorsed by
+> [Status](#status)). Sending your own camera video works in a call; sending your screen is new and
+> not yet tried in a call. This is an independent project and is not affiliated with or endorsed by
 > Microsoft.
 
 The add-in is a FreeRDP dynamic virtual channel plugin. It is loaded with `/dvc:teams-redir`, and
@@ -37,8 +37,9 @@ calls with real people, one-to-one and in a scheduled meeting.
 
 | Works | Not done yet, or not confirmed |
 |---|---|
-| Teams shows "AVD media optimized" | **Sending your own video in a call** is not confirmed. The first attempt crashed the client (the Intel hardware encoder, now off by default); the fix has not been tried in a call |
-| Microphone, speaker and camera lists, with the default devices | Sending your own screen (screen sharing from this machine does not exist) |
+| Teams shows "AVD media optimized" | **Sending your own screen** is built but not yet tried in a call. Click Teams' "Screen" tile, then pick the monitor or window in the desktop's own share dialog (xdg-desktop-portal on Wayland) |
+| Microphone, speaker and camera lists, with the default devices | Sharing several monitors at once, or a window chosen from Teams' own picker |
+| Sending your own camera video in a call (two-person call, 720p at 30 fps) | |
 | Audio calls: the microphone is sent and remote audio plays | Choosing a different microphone or speaker in the middle of a call is untested |
 | Incoming calls: ringing tone and a desktop notification (a desktop in do-not-disturb hides it) | Downloading the tones from Microsoft; an installer or distro package |
 | Ringing and call-ended tones (from local files, or a plain built-in tone) | HID devices (headset buttons) |
@@ -159,6 +160,12 @@ start, the call and its audio carry on without pictures, and a warning is logged
 `teams-redir-video` is installed next to `libteams-redir-client.so`; `TEAMS_REDIR_VIDEO_HELPER`
 names another path. `TEAMS_REDIR_VIDEO=off` stops offering video altogether.
 
+Screen sharing uses libwebrtc's desktop capture. On Wayland it asks xdg-desktop-portal for a
+screencast when Teams starts the share, so the desktop shows its own dialog to pick a monitor or a
+window (on Hyprland, `xdg-desktop-portal-hyprland`); cancelling it leaves the share black. On X11 the
+screen is captured directly. Frames are scaled down to fit 1920x1080 at 15 fps unless Teams asks
+otherwise. `TEAMS_REDIR_SCREENSHARE=off` stops offering it.
+
 ## Configuration
 
 Environment variables of the FreeRDP process:
@@ -171,7 +178,8 @@ Environment variables of the FreeRDP process:
 | `TEAMS_REDIR_NOTIFY_DIR`, `TEAMS_REDIR_NOTIFY_FILE` | Local tones, see above |
 | `TEAMS_REDIR_CALL_NOTIFICATIONS`, `TEAMS_REDIR_CALL_ALERT_SOUNDS` | Call notifications, see above |
 | `TEAMS_REDIR_BUILTIN_TONES` | `off`: no made-up tone for a sound that has no file |
-| `TEAMS_REDIR_VIDEO` | `off`: do not offer video (no cameras, no video codecs) |
+| `TEAMS_REDIR_VIDEO` | `off`: do not offer video (no cameras, no video codecs, no screen sharing) |
+| `TEAMS_REDIR_SCREENSHARE` | `off`: do not offer screen sharing |
 | `TEAMS_REDIR_VIDEO_HELPER` | Path of `teams-redir-video`; default: next to the add-in, then `PATH` |
 | `TEAMS_REDIR_VIDEO_OPEN_DELAY_MS` | How long a picture must keep coming before its window opens (default 700) |
 | `TEAMS_REDIR_VIDEO_KEEP_MS` | How long a window stays after its element closed, for the next one to take over (default 5000; 0 closes at once) |
@@ -287,8 +295,8 @@ use it with a work account. You are responsible for how you use it.
 
 Audio calls, including incoming calls with a ringing tone and a desktop notification; camera
 capture; and joining a scheduled meeting with audio, other people's video and shared screens. See [Status](#status) for
-the table, and the notes there about what has only been tested lightly. Sending your own video in a
-call is still being tested, and sending your own screen does not exist yet.
+the table, and the notes there about what has only been tested lightly. Sending your own camera
+video works in a call; sending your own screen is new and still being tested.
 
 ### Why does the video open in a separate window?
 

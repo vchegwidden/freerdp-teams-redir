@@ -17,6 +17,8 @@ pub use camera::Frame as VideoFrame;
 pub mod fake;
 #[cfg(feature = "libwebrtc")]
 pub mod lk;
+#[cfg(feature = "libwebrtc")]
+mod screen;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Kind {
@@ -406,6 +408,15 @@ pub trait MediaEngine: Send + Sync {
         &self,
         track: &Arc<dyn Track>,
         id: &str,
+    ) -> Result<Arc<dyn Track>, EngineError>;
+
+    /// A local screen-sharing track. Nothing is chosen here: when the capture starts, the
+    /// desktop's own picker (xdg-desktop-portal on Wayland) asks the user for a monitor or a
+    /// window. It captures only while the track is enabled; `constraints` cap the size sent and
+    /// set the frame rate.
+    fn create_screen_capture(
+        &self,
+        constraints: VideoConstraints,
     ) -> Result<Arc<dyn Track>, EngineError>;
 
     /// Where remote audio plays (`setSinkId`).

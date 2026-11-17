@@ -63,6 +63,7 @@ impl PeerConnections {
             (MEDIA_STREAM_TRACK, "createMediaStreamTrack") => self.create_track(req),
             (MEDIA_STREAM_TRACK, "onEnabledAttributeChanged") => self.track_enabled(req),
             (MEDIA_STREAM_TRACK, "stop") => self.track_stop(req),
+            (MEDIA_STREAM_TRACK, "applyConstraints") => self.apply_constraints(req),
             (MEDIA_ELEMENT, "createMediaElement") => self.create_element(conn, req),
             (MEDIA_ELEMENT, "shutdown") => self.shutdown_element(req),
             (MEDIA_ELEMENT, "setAttribute") => self.set_attribute(req),
@@ -133,9 +134,20 @@ impl PeerConnections {
         if let Some(video) = constraints.get("video").filter(|v| wanted(v)) {
             let (source, wish) = video_request(video);
             // Teams asks for the screen the same way, with a source id such as `display`.
-            if matches!(source.as_str(), "display" | "screen" | "window") {
-                tracks.iter().for_each(|t| t.stop());
-                return failure(req, hresult::E_NOTIMPL, "screen capture is not supported");
+            if crate::screens::is_screen_source(&source, video) {
+                match self.engine.create_screen_capture(wish) {
+                    Ok(t) => {
+                        note = format!("{note}: screen \"{source}\" {wish:?}");
+                        tracks.push(t);
+                    }
+                    Err(e) => {
+                        tracks.iter().for_each(|t| t.stop());
+                        return rtc_error(req, &e);
+                    }
+                }
+                self.local_streams
+                    .insert(id, crate::peerconnection::LocalStream { conn, tracks });
+                return ok(req, note);
             }
             let Some(camera) = devices
                 .list()
@@ -188,7 +200,8 @@ impl PeerConnections {
         // `kind` says which one when the stream has both a microphone and a camera.
         let kind = match args["kind"].as_str() {
             Some("audio") => Some(Kind::Audio),
-            Some("video") => Some(Kind::Video),
+            // A screen track says `screenshare` (label "Session Desktop", seen 2026-11-17).
+            Some("video" | "screenshare") => Some(Kind::Video),
             _ => None,
         };
         let own = stream
@@ -276,6 +289,16 @@ impl PeerConnections {
     }
 
     /// Teams stops a track more than once; the second call is not an error.
+    /// Teams sends `applyConstraints` to each screen track right after making it, with the same
+    /// size and rate it asked for in `createMediaStream` (`rpcArgs` is an object here). The
+    /// capture already follows those, so the call is acknowledged.
+    fn apply_constraints(&mut self, req: &RpcRequest) -> Outcome {
+        if let Err(o) = self.local_track(req) {
+            return o;
+        }
+        ok(req, format!("constraints {} (already applied)", req.args))
+    }
+
     fn track_stop(&mut self, req: &RpcRequest) -> Outcome {
         let (id, track) = match self.local_track(req) {
             Ok(t) => t,
@@ -876,10 +899,45 @@ mod tests {
         t.as_any().downcast_ref::<FakeTrack>().unwrap()
     }
 
+    /// What Teams sent when "Session Desktop" was shared (2026-11-17): several screen streams with
+    /// no source, `screenshare` tracks, and `applyConstraints` on each. All of them are the screen.
+    #[test]
+    fn sharing_the_session_desktop_makes_screen_tracks() {
+        let mut r = rig();
+        let stream = r#"[{"id":"8bf5","constraints":{"video":{"resizeMode":"none","width":{"max":1920},"height":{"max":1080},"frameRate":15}}}]"#;
+        for (s, t) in [(1553, 1554), (1555, 1556)] {
+            assert_eq!(
+                call(&mut r, "MediaStream", s, "createMediaStream", stream)["hr"],
+                json!(0)
+            );
+            // The screen capture (the fake names it by the frame rate), not a camera.
+            assert_eq!(r.0.local_streams[&s].tracks[0].id(), "screen-15");
+            let track = format!(
+                r#"[{{"mediaStreamRpcObjectId":{s},"id":"8eb0","kind":"screenshare","label":"Session Desktop"}}]"#
+            );
+            assert_eq!(
+                call(&mut r, "MediaStreamTrack", t, "createMediaStreamTrack", &track)["hr"],
+                json!(0)
+            );
+            assert_eq!(r.0.local_tracks[&t].track.kind(), Kind::Video);
+            let applied = call(
+                &mut r,
+                "MediaStreamTrack",
+                t,
+                "applyConstraints",
+                r#"{"width":1920,"height":1080,"frameRate":15,"resizeMode":"none"}"#,
+            );
+            assert_eq!(applied["hr"], json!(0), "{applied}");
+        }
+        assert_eq!(r.0.local_streams[&1553].tracks[0].id(), "8eb0");
+        let missing = call(&mut r, "MediaStreamTrack", 9, "applyConstraints", "{}");
+        assert_ne!(missing["hr"], json!(0));
+    }
+
     #[test]
     fn a_stream_with_a_microphone_and_a_camera_has_both_and_tracks_pick_by_kind() {
         let mut r = rig();
-        let args = r#"[{"id":"s","constraints":{"audio":{"deviceId":"m"},"video":{"width":{"ideal":1280},"height":{"ideal":720},"frameRate":{"max":30}}}}]"#;
+        let args = r#"[{"id":"s","constraints":{"audio":{"deviceId":"m"},"video":{"deviceId":"default","width":{"ideal":1280},"height":{"ideal":720},"frameRate":{"max":30}}}}]"#;
         assert_eq!(
             call(&mut r, "MediaStream", 34, "createMediaStream", args)["hr"],
             json!(0)
@@ -958,19 +1016,21 @@ mod tests {
         );
         assert_eq!(missing["errorDetails"], json!("no camera \"nope\""));
         assert_eq!(missing["hr"], json!(hresult::ERROR_NOT_FOUND as i32));
-        // The screen is asked for like a camera with a source id of `display`.
-        let screen = call(
-            &mut r,
-            "MediaStream",
-            5,
-            "createMediaStream",
-            r#"[{"id":"e","constraints":{"video":{"mandatory":{"sourceId":"display"}}}}]"#,
-        );
-        assert_eq!(
-            screen["errorDetails"],
-            json!("screen capture is not supported")
-        );
-        assert!(!r.0.local_streams.contains_key(&5));
+        // The screen is asked for like a camera with a source id of `display`, or of the screen
+        // `getScreensAsync` listed; it goes to the screen capture, not to a camera.
+        for (id, source) in [(5, "display"), (6, "1")] {
+            let screen = call(
+                &mut r,
+                "MediaStream",
+                id,
+                "createMediaStream",
+                &format!(
+                    r#"[{{"id":"e","constraints":{{"video":{{"mandatory":{{"sourceId":"{source}","maxFrameRate":5}}}}}}}}]"#
+                ),
+            );
+            assert_eq!(screen["hr"], json!(0), "{screen}");
+            assert_eq!(r.0.local_streams[&id].tracks[0].id(), "screen-5");
+        }
     }
 
     #[test]

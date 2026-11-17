@@ -1043,7 +1043,7 @@ pub(crate) fn parse_direction(s: &str) -> Option<Direction> {
 }
 
 /// Standard base64 with padding, for `message` events.
-fn base64(data: &[u8]) -> String {
+pub(crate) fn base64(data: &[u8]) -> String {
     const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
@@ -2304,7 +2304,7 @@ mod tests {
     #[test]
     fn a_local_track_carries_the_id_teams_gave_it() {
         let (mut rig, _surface) = video_rig();
-        let video = r#"[{"id":"s","constraints":{"video":true}}]"#;
+        let video = r#"[{"id":"s","constraints":{"video":{"deviceId":"default"}}}]"#;
         element_call(&mut rig, "MediaStream", 82, "createMediaStream", video);
         let t = r#"[{"mediaStreamRpcObjectId":82,"id":"415ffe8f","kind":"video","label":"Cam"}]"#;
         let c = element_call(
@@ -2325,7 +2325,7 @@ mod tests {
     #[test]
     fn the_settings_preview_wraps_the_camera_it_opened() {
         let (mut rig, surface) = video_rig();
-        let video = r#"[{"id":"s","constraints":{"video":true}}]"#;
+        let video = r#"[{"id":"s","constraints":{"video":{"deviceId":"default"}}}]"#;
         for (stream, track) in [(82, 83), (84, 85)] {
             let c = element_call(&mut rig, "MediaStream", stream, "createMediaStream", video);
             assert_eq!(c["hr"], json!(0));
@@ -2399,7 +2399,7 @@ mod tests {
             "MediaStream",
             34,
             "createMediaStream",
-            r#"[{"id":"s","constraints":{"video":true}}]"#,
+            r#"[{"id":"s","constraints":{"video":{"deviceId":"default"}}}]"#,
         );
         assert_eq!(created["hr"], json!(0));
         element_call(

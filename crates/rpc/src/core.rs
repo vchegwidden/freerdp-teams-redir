@@ -18,6 +18,7 @@ use crate::devices::{DeviceSource, SystemDevices};
 use crate::host::{Channel, ConnId, Host, LogLevel};
 use crate::media_objects;
 use crate::mediadevices;
+use crate::screens;
 use crate::notify::{self, Notifier};
 use crate::peerconnection::{self, Deferred, PeerConnections};
 use crate::redirector;
@@ -329,7 +330,8 @@ impl State {
             t if media_objects::handles(t) => {
                 self.pcs.handle_object(conn, self.devices.as_ref(), &req)
             }
-            _ => mediadevices::handle(self.devices.as_ref(), &req),
+            _ => screens::handle(self.config.screen_share, &req)
+                .or_else(|| mediadevices::handle(self.devices.as_ref(), &req)),
         };
         let replies = match outcome {
             Some(o) => {

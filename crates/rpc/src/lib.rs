@@ -13,6 +13,7 @@ pub mod notify;
 pub mod peerconnection;
 pub mod redirector;
 pub mod registry;
+pub mod screens;
 mod tones;
 pub mod video;
 

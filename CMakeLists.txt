@@ -4,6 +4,8 @@ project(teams-redir C)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FREERDP REQUIRED IMPORTED_TARGET freerdp3 winpr3)
 find_package(Threads REQUIRED)
+# libwebrtc's screen capture talks to xdg-desktop-portal with GDBus.
+pkg_check_modules(GIO REQUIRED IMPORTED_TARGET gio-2.0)
 find_program(CARGO cargo REQUIRED)
 find_program(CBINDGEN cbindgen REQUIRED)
 
@@ -56,7 +58,7 @@ target_include_directories(teams-redir-client PRIVATE ${CMAKE_BINARY_DIR}/includ
 target_compile_options(teams-redir-client PRIVATE -Wall -Wextra -fvisibility=hidden)
 target_link_libraries(teams-redir-client PRIVATE PkgConfig::FREERDP
   ${FFI_LIB}
-  Threads::Threads ${CMAKE_DL_LIBS} m)
+  PkgConfig::GIO Threads::Threads ${CMAKE_DL_LIBS} m)
 # Export only the entry point: libwebrtc (phase 1.5) brings its own BoringSSL and abseil, and
 # FreeRDP has OpenSSL in the same process.
 target_link_options(teams-redir-client PRIVATE

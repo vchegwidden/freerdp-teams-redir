@@ -63,6 +63,9 @@ pub struct Config {
     pub call_alert_sounds: Vec<String>,
     /// Whether video is offered at all (`TEAMS_REDIR_VIDEO=off` turns it off).
     pub video: bool,
+    /// Whether screen sharing is offered (`TEAMS_REDIR_SCREENSHARE=off` turns it off). Off too
+    /// when video is off.
+    pub screen_share: bool,
     /// The video window helper, if named; else it is looked for next to this module and in `PATH`.
     pub video_helper: Option<PathBuf>,
     pub identity: Identity,
@@ -130,6 +133,11 @@ impl Config {
             var("TEAMS_REDIR_VIDEO").as_deref(),
             Some("off" | "0" | "false" | "no")
         );
+        let screen_share = video
+            && !matches!(
+                var("TEAMS_REDIR_SCREENSHARE").as_deref(),
+                Some("off" | "0" | "false" | "no")
+            );
         let video_helper = var("TEAMS_REDIR_VIDEO_HELPER").map(PathBuf::from);
         let mac = cpc == CpcMode::MacStore;
         let pick = |k: &str, default: &str| var(k).unwrap_or_else(|| default.to_owned());
@@ -163,6 +171,7 @@ impl Config {
             call_alerts,
             call_alert_sounds,
             video,
+            screen_share,
             video_helper,
             identity,
         }
