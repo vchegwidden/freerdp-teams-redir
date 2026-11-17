@@ -1142,8 +1142,8 @@ fn parse_description(arg: Option<&Value>) -> Result<SessionDescription, (u32, &'
 }
 
 /// `rpcArgs[0]` of `createPeerConnection`. `None` for a configuration this client cannot honour:
-/// only unified-plan SDP is supported. Policies other than `relay` are left to libwebrtc's
-/// defaults (max-bundle, rtcp-mux required), which is what Teams asks for.
+/// only unified-plan SDP is supported. Of the policies only `relay` is read: the engine always
+/// uses max-bundle and rtcp-mux "require", which is what Teams asks for.
 fn parse_config(arg: Option<&Value>) -> Option<PcConfig> {
     let Some(arg) = arg.filter(|a| a.is_object()) else {
         return Some(PcConfig::default());
@@ -2296,6 +2296,27 @@ mod tests {
         let fake: &media::fake::FakeTrack = bound.as_any().downcast_ref().unwrap();
         fake.deliver(&picture());
         assert_eq!(surface.frames.lock().unwrap().len(), 1);
+    }
+
+    /// Teams finds its camera in `getStats` by the id it gave the track (`trackIdentifier`), and
+    /// ends the call when it cannot (2026-11-12: every offer that started our video was taken
+    /// back 0.3 s after the `getStats` that followed it).
+    #[test]
+    fn a_local_track_carries_the_id_teams_gave_it() {
+        let (mut rig, _surface) = video_rig();
+        let video = r#"[{"id":"s","constraints":{"video":true}}]"#;
+        element_call(&mut rig, "MediaStream", 82, "createMediaStream", video);
+        let t = r#"[{"mediaStreamRpcObjectId":82,"id":"415ffe8f","kind":"video","label":"Cam"}]"#;
+        let c = element_call(
+            &mut rig,
+            "MediaStreamTrack",
+            83,
+            "createMediaStreamTrack",
+            t,
+        );
+        assert_eq!(c["hr"], json!(0));
+        assert_eq!(rig.pcs.local_tracks[&83].track.id(), "415ffe8f");
+        assert_eq!(rig.pcs.local_streams[&82].tracks[0].id(), "415ffe8f");
     }
 
     /// What the Teams device settings page does when a camera is picked (2026-11-01): it asks for

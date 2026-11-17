@@ -225,6 +225,26 @@ impl PeerConnections {
                 track
             }
         };
+        // Give the engine's track the name Teams gave it (see `rename_local_track`).
+        let track = match args["id"].as_str() {
+            Some(name) if !name.is_empty() && track.id() != name => {
+                match self.engine.rename_local_track(&track, name) {
+                    Ok(renamed) => {
+                        if let Some(s) = self.local_streams.get_mut(&stream_id) {
+                            for t in s.tracks.iter_mut() {
+                                if Arc::ptr_eq(t, &track) {
+                                    *t = renamed.clone();
+                                }
+                            }
+                        }
+                        self.refresh_elements(stream_id);
+                        renamed
+                    }
+                    Err(e) => return rtc_error(req, &e),
+                }
+            }
+            _ => track,
+        };
         self.local_tracks
             .insert(id, crate::peerconnection::LocalTrack { track });
         ok(req, format!("MediaStreamTrack {id} of stream {stream_id}"))

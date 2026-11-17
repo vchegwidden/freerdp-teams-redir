@@ -9,8 +9,9 @@
 //! The module knows devices by index and description, so devices are found by their label.
 //!
 //! Known gaps of the bindings, to be closed with the media work:
-//! - `RtcConfiguration` has no bundle policy, rtcp-mux policy or port ranges; libwebrtc's defaults
-//!   (max-bundle, require) are what the Windows host asks for anyway.
+//! - `RtcConfiguration` has no bundle policy, rtcp-mux policy or port ranges. The vendored
+//!   `webrtc-sys` always sets max-bundle and rtcp-mux "require", which Teams asks for on every
+//!   peer connection (libwebrtc's own default bundle policy is "balanced").
 //! - Only the *current* local and remote descriptions are readable, not the pending ones, so
 //!   `local_description` falls back to the description last set while an offer is outstanding.
 
@@ -160,6 +161,40 @@ impl MediaEngine for LkEngine {
         }))
     }
 
+    fn rename_local_track(
+        &self,
+        track: &Arc<dyn Track>,
+        id: &str,
+    ) -> Result<Arc<dyn Track>, EngineError> {
+        let Some(lk) = track.as_any().downcast_ref::<LkTrack>() else {
+            return Err(EngineError::new(
+                ErrorKind::InvalidParameter,
+                "not a libwebrtc track",
+            ));
+        };
+        if lk.track.id() == id || lk.rt.is_some() {
+            return Ok(track.clone());
+        }
+        let renamed = match (&lk.track, &lk.camera) {
+            (MediaStreamTrack::Video(_), Some(cam)) => {
+                let inner = self.inner()?;
+                let _runtime = inner.handle.enter();
+                MediaStreamTrack::Video(inner.factory.create_video_track(id, cam.source.clone()))
+            }
+            (MediaStreamTrack::Audio(_), None) => {
+                MediaStreamTrack::Audio(self.audio()?.create_device_audio_track(id))
+            }
+            _ => return Ok(track.clone()),
+        };
+        renamed.set_enabled(lk.track.enabled());
+        Ok(Arc::new(LkTrack {
+            track: renamed,
+            camera: lk.camera.clone(),
+            rt: None,
+            sink_task: Mutex::new(None),
+        }))
+    }
+
     fn create_video_capture(
         &self,
         device_id: &str,
@@ -211,7 +246,7 @@ impl MediaEngine for LkEngine {
             .map_err(|e| EngineError::new(ErrorKind::Internal, e))?;
         Ok(Arc::new(LkTrack {
             track: MediaStreamTrack::Video(track),
-            camera: Some(feed),
+            camera: Some(Arc::new(feed)),
             rt: None,
             sink_task: Mutex::new(None),
         }))
@@ -527,7 +562,7 @@ impl PeerConnection for LkPc {
 struct LkTrack {
     track: MediaStreamTrack,
     /// Set for a camera track.
-    camera: Option<CameraFeed>,
+    camera: Option<Arc<CameraFeed>>,
     /// For a remote track, the runtime that drives its frame stream.
     rt: Option<Handle>,
     /// The task that hands a remote video track's frames to the sink.
@@ -1071,6 +1106,46 @@ mod tests {
         );
         a.close();
         b.close();
+    }
+
+    /// Teams asks for max-bundle, and the meeting server rejects a re-offer whose video sections
+    /// sit on different ports ("MultiplexingRequiredForMediaWithSameLabel"): every section of an
+    /// offer made after gathering shares one transport.
+    #[test]
+    fn a_reoffer_puts_every_section_on_one_port() {
+        let engine = LkEngine::new();
+        let (sink, _log) = fake::collecting_sink();
+        let (sink_b, _log_b) = fake::collecting_sink();
+        let pc = engine
+            .create_peer_connection(PcConfig::default(), sink)
+            .unwrap();
+        let answerer = engine
+            .create_peer_connection(PcConfig::default(), sink_b)
+            .unwrap();
+        pc.add_transceiver(Kind::Audio, Direction::SendRecv).unwrap();
+        pc.add_transceiver(Kind::Video, Direction::RecvOnly).unwrap();
+        pc.add_transceiver(Kind::Video, Direction::RecvOnly).unwrap();
+        let offer = wait(|d| pc.create_offer(d)).unwrap();
+        wait(|d| pc.set_local_description(offer.clone(), d)).unwrap();
+        wait(|d| answerer.set_remote_description(offer, d)).unwrap();
+        let answer = wait(|d| answerer.create_answer(d)).unwrap();
+        wait(|d| answerer.set_local_description(answer.clone(), d)).unwrap();
+        wait(|d| pc.set_remote_description(answer, d)).unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+
+        let reoffer = wait(|d| pc.create_offer(d)).unwrap();
+        let ports: std::collections::BTreeSet<&str> = reoffer
+            .sdp
+            .lines()
+            .filter(|l| l.starts_with("m="))
+            .filter_map(|l| l.split(' ').nth(1))
+            .collect();
+        // The first section carries the transport; the bundled ones say port 9 (as Chrome's do).
+        // With "balanced" every section had a port of its own.
+        let real: Vec<_> = ports.iter().filter(|p| **p != "9").collect();
+        assert_eq!(real.len(), 1, "{}", reoffer.sdp);
+        pc.close();
+        answerer.close();
     }
 
     /// The shape of the call Teams sets up (2026-10-31): a data channel, an audio transceiver and

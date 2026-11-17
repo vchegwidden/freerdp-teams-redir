@@ -63,8 +63,24 @@ impl MediaEngine for FakeEngine {
         Ok(Arc::new(FakeTrack {
             id: format!("capture-{}", device.id),
             kind: Kind::Audio,
-            sink: Mutex::new(None),
-            state: Mutex::new((true, false)),
+            sink: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new((true, false))),
+        }))
+    }
+
+    fn rename_local_track(
+        &self,
+        track: &Arc<dyn Track>,
+        id: &str,
+    ) -> Result<Arc<dyn Track>, EngineError> {
+        let Some(t) = track.as_any().downcast_ref::<FakeTrack>() else {
+            return Ok(track.clone());
+        };
+        Ok(Arc::new(FakeTrack {
+            id: id.to_owned(),
+            kind: t.kind,
+            sink: t.sink.clone(),
+            state: t.state.clone(),
         }))
     }
 
@@ -82,8 +98,8 @@ impl MediaEngine for FakeEngine {
         Ok(Arc::new(FakeTrack {
             id: format!("camera-{device_id}"),
             kind: Kind::Video,
-            sink: Mutex::new(None),
-            state: Mutex::new((true, false)),
+            sink: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new((true, false))),
         }))
     }
 
@@ -113,9 +129,9 @@ impl MediaEngine for FakeEngine {
 pub struct FakeTrack {
     id: String,
     kind: Kind,
-    sink: Mutex<Option<VideoSink>>,
+    sink: Arc<Mutex<Option<VideoSink>>>,
     /// `(enabled, stopped)`.
-    state: Mutex<(bool, bool)>,
+    state: Arc<Mutex<(bool, bool)>>,
 }
 
 impl FakeTrack {
@@ -132,8 +148,8 @@ impl FakeTrack {
         Arc::new(FakeTrack {
             id: id.to_owned(),
             kind,
-            sink: Mutex::new(None),
-            state: Mutex::new((true, false)),
+            sink: Arc::new(Mutex::new(None)),
+            state: Arc::new(Mutex::new((true, false))),
         })
     }
 

@@ -397,6 +397,17 @@ pub trait MediaEngine: Send + Sync {
         constraints: VideoConstraints,
     ) -> Result<Arc<dyn Track>, EngineError>;
 
+    /// The same local capture as `track` under the track id `id`. Teams names every track it
+    /// creates (`createMediaStreamTrack`) and finds its camera in `getStats` by that name
+    /// (`media-source.trackIdentifier`); a camera it cannot find there makes it take the video
+    /// back and end the call. The new track shares the capture: muting or stopping either one
+    /// mutes or stops the camera. A track that is not a local capture comes back unchanged.
+    fn rename_local_track(
+        &self,
+        track: &Arc<dyn Track>,
+        id: &str,
+    ) -> Result<Arc<dyn Track>, EngineError>;
+
     /// Where remote audio plays (`setSinkId`).
     fn set_playout_device(&self, device: &AudioDevice) -> Result<(), EngineError>;
 

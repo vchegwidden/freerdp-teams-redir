@@ -57,6 +57,16 @@ webrtc::PeerConnectionInterface::RTCConfiguration to_native_rtc_configuration(
 
   rtc_config.enable_sctp_snap = config.enable_sctp_snap;
 
+  // teams-redir patch: max-bundle and rtcp-mux, which Teams asks for on every peer connection.
+  // libwebrtc's default is "balanced": every m-section then gathers its own ICE transport, so a
+  // re-offer puts each video section on a different port, and the meeting server rejects it with
+  // "MultiplexingRequiredForMediaWithSameLabel ... [main-video]" (turning on the camera ended
+  // the call).
+  rtc_config.bundle_policy =
+      webrtc::PeerConnectionInterface::kBundlePolicyMaxBundle;
+  rtc_config.rtcp_mux_policy =
+      webrtc::PeerConnectionInterface::kRtcpMuxPolicyRequire;
+
   return rtc_config;
 }
 
