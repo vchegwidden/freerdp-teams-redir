@@ -256,6 +256,17 @@ impl PeerConnection {
         self.handle.current_remote_description()
     }
 
+    /// teams-redir patch: the local description of an offer/answer exchange in progress, with
+    /// the candidates gathered so far (a browser's `pendingLocalDescription`).
+    pub fn pending_local_description(&self) -> Option<SessionDescription> {
+        self.handle.pending_local_description()
+    }
+
+    /// teams-redir patch: the remote description of an exchange in progress.
+    pub fn pending_remote_description(&self) -> Option<SessionDescription> {
+        self.handle.pending_remote_description()
+    }
+
     pub fn senders(&self) -> Vec<RtpSender> {
         self.handle.senders()
     }

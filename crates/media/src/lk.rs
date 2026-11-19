@@ -12,8 +12,7 @@
 //! - `RtcConfiguration` has no bundle policy, rtcp-mux policy or port ranges. The vendored
 //!   `webrtc-sys` always sets max-bundle and rtcp-mux "require", which Teams asks for on every
 //!   peer connection (libwebrtc's own default bundle policy is "balanced").
-//! - Only the *current* local and remote descriptions are readable, not the pending ones, so
-//!   `local_description` falls back to the description last set while an offer is outstanding.
+//! - The pending descriptions are read through a vendored patch (`pending_local_description`).
 
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -25,7 +24,8 @@ use libwebrtc::peer_connection as lw_pc;
 use libwebrtc::peer_connection::{AnswerOptions, OfferOptions};
 use libwebrtc::peer_connection_factory::native::PeerConnectionFactoryExt;
 use libwebrtc::peer_connection_factory::{
-    IceServer as LwIceServer, IceTransportsType, PeerConnectionFactory, RtcConfiguration,
+    ContinualGatheringPolicy, IceServer as LwIceServer, IceTransportsType, PeerConnectionFactory,
+    RtcConfiguration,
 };
 use libwebrtc::rtp_parameters::RtpCapabilities as LwCaps;
 use libwebrtc::rtp_transceiver::{RtpTransceiver, RtpTransceiverDirection, RtpTransceiverInit};
@@ -328,6 +328,11 @@ impl MediaEngine for LkEngine {
         let _ = self.audio();
         let inner = self.inner()?;
         let mut cfg = RtcConfiguration::default();
+        // LiveKit's default is "gather continually", whose gathering never completes. Teams waits
+        // for `icegatheringstatechange: complete` before it sends a 1:1 call's SDP, with our
+        // candidates, to the other client; without it the other side never learns where we are
+        // and ICE fails (2026-11-19: "checking" for 133 s, then "failed"). Browsers gather once.
+        cfg.continual_gathering_policy = ContinualGatheringPolicy::GatherOnce;
         cfg.ice_servers = config
             .ice_servers
             .into_iter()
@@ -507,16 +512,23 @@ impl PeerConnection for LkPc {
             .spawn(async move { done(pc.add_ice_candidate(parsed).await.map_err(error)) });
     }
 
+    /// Pending, else current, as a browser's `localDescription`. libwebrtc adds the candidates
+    /// it gathers to it, and Teams sends this SDP (from the `icecandidate` events) to the other
+    /// side of a 1:1 call. Reading only the current one gave the description Teams had set, with
+    /// no candidates, while our offer was outstanding: the other client never learned where we
+    /// were, and calls this side placed failed ICE (2026-11-19).
     fn local_description(&self) -> Option<SessionDescription> {
         self.pc
-            .current_local_description()
+            .pending_local_description()
+            .or_else(|| self.pc.current_local_description())
             .map(from_lk_sdp)
             .or_else(|| self.last_local.lock().unwrap().clone())
     }
 
     fn remote_description(&self) -> Option<SessionDescription> {
         self.pc
-            .current_remote_description()
+            .pending_remote_description()
+            .or_else(|| self.pc.current_remote_description())
             .map(from_lk_sdp)
             .or_else(|| self.last_remote.lock().unwrap().clone())
     }
@@ -1212,6 +1224,59 @@ mod tests {
         assert!(w <= 1280 && h <= 720 && w > 0 && h > 0, "{w}x{h}");
     }
 
+    /// Teams sends a 1:1 call's offer, candidates included, once gathering is `complete`; with
+    /// LiveKit's default (gather continually) that never came, and ICE with the other client
+    /// failed. Host candidates alone finish in well under a second.
+    #[test]
+    fn ice_gathering_completes() {
+        let engine = LkEngine::new();
+        let (sink, log) = fake::collecting_sink();
+        let pc = engine
+            .create_peer_connection(PcConfig::default(), sink)
+            .unwrap();
+        pc.add_transceiver(Kind::Audio, Direction::SendRecv).unwrap();
+        let offer = wait(|d| pc.create_offer(d)).unwrap();
+        wait(|d| pc.set_local_description(offer, d)).unwrap();
+        let complete = || {
+            log.lock()
+                .unwrap()
+                .iter()
+                .any(|e| matches!(e, PcEvent::IceGatheringState(IceGatheringState::Complete)))
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !complete() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(complete(), "{:?}", log.lock().unwrap());
+        pc.close();
+    }
+
+    /// While our offer is outstanding, the local description Teams forwards to the other client
+    /// must carry the candidates gathered so far (2026-11-19: it had none, and every 1:1 call this
+    /// side placed failed ICE, while calls it answered connected).
+    #[test]
+    fn an_outstanding_offer_carries_its_candidates() {
+        let engine = LkEngine::new();
+        let (sink, _log) = fake::collecting_sink();
+        let pc = engine
+            .create_peer_connection(PcConfig::default(), sink)
+            .unwrap();
+        pc.add_transceiver(Kind::Audio, Direction::SendRecv).unwrap();
+        let offer = wait(|d| pc.create_offer(d)).unwrap();
+        assert!(!offer.sdp.contains("a=candidate"));
+        wait(|d| pc.set_local_description(offer, d)).unwrap();
+        let has_candidates = || {
+            pc.local_description()
+                .is_some_and(|d| d.kind == SdpType::Offer && d.sdp.contains("a=candidate"))
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !has_candidates() && std::time::Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        assert!(has_candidates(), "{:?}", pc.local_description());
+        pc.close();
+    }
+
     /// Teams asks for max-bundle, and the meeting server rejects a re-offer whose video sections
     /// sit on different ports ("MultiplexingRequiredForMediaWithSameLabel"): every section of an
     /// offer made after gathering shares one transport.
@@ -1736,3 +1801,4 @@ mod tests {
         );
     }
 }
+

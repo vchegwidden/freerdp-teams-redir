@@ -1,7 +1,7 @@
 # vendor
 
 `libwebrtc/` is `libwebrtc` 0.3.55 from crates.io (Copyright LiveKit, Inc., Apache-2.0: see
-`libwebrtc/LICENSE-APACHE`; the source files keep their license headers) with four changes, each
+`libwebrtc/LICENSE-APACHE`; the source files keep their license headers) with five changes, each
 marked `teams-redir patch`:
 
 - `RtpTransceiver::set_direction`, which the C++ layer has and the Rust bindings leave out. Teams
@@ -19,14 +19,21 @@ marked `teams-redir patch`:
   creates an offer, so a `sendrecv` audio transceiver was offered `sendonly`. Teams calls
   `createOffer` with no options, and so did the Windows add-in.
 
+- `PeerConnection::pending_local_description` / `pending_remote_description` (added to
+  `webrtc-sys` too). Teams forwards the local description from each `icecandidate` event to the
+  other client of a 1:1 call; the current one has no candidates while our offer is outstanding, so
+  calls placed from this side failed ICE.
+
 Drop this directory and the `[patch.crates-io]` entry in `../Cargo.toml` when upstream has both.
 
 `webrtc-sys/` is `webrtc-sys` 0.3.52 from crates.io (Copyright LiveKit, Inc., Apache-2.0) without its
-`test/` directory, with four changes, marked `teams-redir patch`: `RtpTransceiver::id` (see above), `RtpSender::set_track`
+`test/` directory, with six changes, marked `teams-redir patch`: `RtpTransceiver::id` and the pending descriptions (see above), `RtpSender::set_track`
 accepting a null track (`replaceTrack(null)` used to dereference it and crash the client), max-bundle
 and rtcp-mux "require" on every peer connection (libwebrtc defaults to "balanced", which gave each
 section its own ICE transport, and a meeting rejects a camera re-offer whose video sections are not
-bundled: `MultiplexingRequiredForMediaWithSameLabel`), and in
+bundled: `MultiplexingRequiredForMediaWithSameLabel`), the PipeWire screen capturer on any Wayland session
+(`XDG_SESSION_TYPE=wayland`) even without `WAYLAND_DISPLAY`, which a client on XWayland drops and
+libwebrtc otherwise requires (the portal needs only D-Bus and PipeWire), and in
 `src/video_encoder_factory.cpp`:
 
 - The VAAPI H.264 encoder is only offered when `TEAMS_REDIR_VAAPI=1`. libwebrtc otherwise picks it

@@ -208,6 +208,9 @@ pub mod ffi {
         fn restart_ice(self: &PeerConnection);
         fn current_local_description(self: &PeerConnection) -> UniquePtr<SessionDescription>;
         fn current_remote_description(self: &PeerConnection) -> UniquePtr<SessionDescription>;
+        // teams-redir patch: the descriptions of an offer/answer exchange in progress.
+        fn pending_local_description(self: &PeerConnection) -> UniquePtr<SessionDescription>;
+        fn pending_remote_description(self: &PeerConnection) -> UniquePtr<SessionDescription>;
         fn connection_state(self: &PeerConnection) -> PeerConnectionState;
         fn signaling_state(self: &PeerConnection) -> SignalingState;
         fn ice_gathering_state(self: &PeerConnection) -> IceGatheringState;

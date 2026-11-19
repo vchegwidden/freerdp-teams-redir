@@ -430,6 +430,25 @@ impl PeerConnection {
         Some(SessionDescription { handle: imp_sdp::SessionDescription { sys_handle: sdp } })
     }
 
+    // teams-redir patch: the pending descriptions (an offer/answer exchange in progress).
+    pub fn pending_local_description(&self) -> Option<SessionDescription> {
+        let sdp = self.sys_handle.pending_local_description();
+        if sdp.is_null() {
+            return None;
+        }
+
+        Some(SessionDescription { handle: imp_sdp::SessionDescription { sys_handle: sdp } })
+    }
+
+    pub fn pending_remote_description(&self) -> Option<SessionDescription> {
+        let sdp = self.sys_handle.pending_remote_description();
+        if sdp.is_null() {
+            return None;
+        }
+
+        Some(SessionDescription { handle: imp_sdp::SessionDescription { sys_handle: sdp } })
+    }
+
     pub fn remove_track(&self, sender: RtpSender) -> Result<(), RtcError> {
         self.sys_handle
             .remove_track(sender.handle.sys_handle)

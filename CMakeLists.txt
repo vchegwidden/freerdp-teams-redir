@@ -12,7 +12,9 @@ find_program(CBINDGEN cbindgen REQUIRED)
 set(CARGO_TARGET_DIR ${CMAKE_BINARY_DIR}/cargo)
 set(FFI_LIB ${CARGO_TARGET_DIR}/release/libteams_redir_ffi.a)
 set(FFI_HEADER ${CMAKE_BINARY_DIR}/include/tr_core.h)
-file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/crates/*.rs ${CMAKE_SOURCE_DIR}/crates/*/Cargo.toml)
+# The vendored LiveKit crates count too: a change to their C++ must rebuild the add-in.
+file(GLOB_RECURSE RUST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/crates/*.rs ${CMAKE_SOURCE_DIR}/crates/*/Cargo.toml
+  ${CMAKE_SOURCE_DIR}/vendor/*.rs ${CMAKE_SOURCE_DIR}/vendor/*.cpp ${CMAKE_SOURCE_DIR}/vendor/*.h)
 
 # The Rust core, as a static library.
 add_custom_command(

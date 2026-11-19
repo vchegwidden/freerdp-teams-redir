@@ -18,6 +18,13 @@
 
 #include "modules/desktop_capture/desktop_capture_options.h"
 
+#ifdef WEBRTC_USE_PIPEWIRE
+#include <cstdlib>
+#include <cstring>
+
+#include "modules/desktop_capture/linux/wayland/base_capturer_pipewire.h"
+#endif /* WEBRTC_USE_PIPEWIRE */
+
 using SourceList = webrtc::DesktopCapturer::SourceList;
 
 namespace livekit_ffi {
@@ -62,6 +69,21 @@ std::unique_ptr<DesktopCapturer> new_desktop_capturer(
       capturer = webrtc::DesktopCapturer::CreateScreenCapturer(webrtc_options);
       break;
     case SourceType::Generic:
+#ifdef WEBRTC_USE_PIPEWIRE
+      // teams-redir patch: libwebrtc only takes the PipeWire (xdg-desktop-portal) path when
+      // WAYLAND_DISPLAY is set, but the portal needs only D-Bus and PipeWire. A client that runs
+      // on XWayland drops WAYLAND_DISPLAY (the user's FreeRDP launcher does), and then there was
+      // no capturer at all: no picker, a black share. On a Wayland session, build it directly.
+      {
+        const char* session = std::getenv("XDG_SESSION_TYPE");
+        if (session && std::strncmp(session, "wayland", 7) == 0 &&
+            webrtc_options.allow_pipewire()) {
+          capturer = std::make_unique<webrtc::BaseCapturerPipeWire>(
+              webrtc_options, webrtc::CaptureType::kAnyScreenContent);
+          break;
+        }
+      }
+#endif /* WEBRTC_USE_PIPEWIRE */
       capturer = webrtc::DesktopCapturer::CreateGenericCapturer(webrtc_options);
       break;
     default:
